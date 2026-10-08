@@ -113,8 +113,17 @@ export const App: React.FC = () => {
 
       {/* Change Password Dialog */}
       <ChangePasswordModal
-        isOpen={isPasswordModalOpen}
-        onClose={() => setIsPasswordModalOpen(false)}
+        isOpen={isPasswordModalOpen || !!currentUser.mustChangePassword}
+        forced={!!currentUser.mustChangePassword}
+        onClose={() => {
+          setIsPasswordModalOpen(false);
+          if (currentUser.mustChangePassword) {
+            // Server cleared the flag after a successful change; refresh session state.
+            Api.getMe()
+              .then((data) => setCurrentUser(data.user))
+              .catch(() => setCurrentUser({ ...currentUser, mustChangePassword: false }));
+          }
+        }}
       />
     </div>
   );

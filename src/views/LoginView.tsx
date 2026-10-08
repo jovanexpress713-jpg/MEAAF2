@@ -7,8 +7,10 @@ interface LoginViewProps {
 }
 
 export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
-  const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('Admin@123456');
+  // Seed credentials are prefilled only in development builds; never in production.
+  const isDev = import.meta.env.DEV;
+  const [username, setUsername] = useState(isDev ? 'admin' : '');
+  const [password, setPassword] = useState(isDev ? 'Admin@123456' : '');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -133,6 +135,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
             </button>
           </form>
 
+          {isDev && (
           <div className="mt-6 pt-4 border-t border-slate-100 text-center">
             <button
               type="button"
@@ -140,9 +143,10 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
               className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800 transition-colors cursor-pointer"
             >
               <RefreshCw className="w-3 h-3" />
-              استعادة بيانات الخادم التأسيسية
+              استعادة بيانات الخادم التأسيسية (تطوير فقط)
             </button>
           </div>
+          )}
         </div>
 
         <p className="text-center text-xs text-slate-500 mt-6">

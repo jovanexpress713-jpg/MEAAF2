@@ -19,6 +19,9 @@ import {
   createSession,
   revokeSession,
   logAudit,
+  requiresPasswordChange,
+  clearMustChangeForUser,
+  DEFAULT_SEED_PASSWORD,
 } from './auth';
 
 export const apiRouter = Router();
@@ -75,13 +78,15 @@ apiRouter.post('/auth/login', (req, res: Response) => {
   const role = raw.roles.find(r => r.id === user.roleId && r.tenantId === user.tenantId);
   const permissions = role?.permissions || [];
 
-  const token = createSession(user, permissions);
+  const mustChange = requiresPasswordChange(user);
+  const token = createSession(user, permissions, mustChange);
   logAudit(user.tenantId, user.id, 'Login', 'Core.Users', user.id, `تسجيل دخول ناجح للمستخدم: ${user.username}`);
 
   const tenant = raw.tenants.find(t => t.id === user.tenantId);
 
   res.json({
     token,
+    mustChangePassword: mustChange,
     user: {
       id: user.id,
       tenantId: user.tenantId,
@@ -139,7 +144,14 @@ apiRouter.post('/auth/change-password', authenticate, (req: AuthenticatedRequest
     return;
   }
 
-  user.passwordHash = bcrypt.hashSync(newPassword, bcrypt.genSaltSync(10));
+  if (newPassword === DEFAULT_SEED_PASSWORD) {
+    res.status(400).json({ error: 'لا يمكن استخدام كلمة المرور الافتراضية.' });
+    return;
+  }
+
+  user.passwordHash = bcrypt.hashSync(newPassword, bcrypt.genSaltSync(12));
+  user.mustChangePassword = false;
+  clearMustChangeForUser(user.id);
   db.save();
 
   logAudit(req.user!.tenantId, req.user!.userId, 'ChangePassword', 'Core.Users', user.id, 'تم تغيير كلمة المرور بنجاح للمستخدم');
@@ -809,6 +821,11 @@ apiRouter.get('/backup/export', authenticate, requirePermission('Backup', 'Creat
 });
 
 apiRouter.post('/backup/reset', authenticate, requirePermission('Backup', 'Restore'), (req: AuthenticatedRequest, res: Response) => {
+  // Factory reset is a destructive, dev-only operation and must be explicitly enabled.
+  if (process.env.NODE_ENV === 'production' || process.env.MEAAF_ALLOW_FACTORY_RESET !== 'true') {
+    res.status(403).json({ error: 'إعادة الضبط إلى البيانات التأسيسية معطلة في هذه البيئة.' });
+    return;
+  }
   db.seedDefaultData();
   logAudit('tenant-001', req.user?.userId, 'FactoryReset', 'Core.System', undefined, 'إعادة ضبط المنظومة للبيانات التأسيسية المعتمدة');
   res.json({ success: true, message: 'تمت إعادة الضبط للبيانات التأسيسية.' });
