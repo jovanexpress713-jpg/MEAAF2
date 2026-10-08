@@ -123,10 +123,9 @@ export const App: React.FC = () => {
         onClose={() => {
           setIsPasswordModalOpen(false);
           if (currentUser.mustChangePassword) {
-            // Server cleared the flag after a successful change; refresh session state.
-            Api.getMe()
-              .then((data) => setCurrentUser(data.user))
-              .catch(() => setCurrentUser({ ...currentUser, mustChangePassword: false }));
+            // Views loaded while the password change was pending were refused (403) and would stay
+            // empty. Reload so every view fetches its data with the now-unrestricted session.
+            window.location.reload();
           }
         }}
       />
