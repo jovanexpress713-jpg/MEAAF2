@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Api, setAuthToken } from './services/api';
 import { Header } from './components/Header';
+import { SyncStatus } from './components/SyncStatus';
 import { Sidebar, NavTab } from './components/Sidebar';
 import { ChangePasswordModal } from './components/Dialogs/ChangePasswordModal';
 import { LoginView } from './views/LoginView';
@@ -88,6 +89,8 @@ export const App: React.FC = () => {
         onChangePassword={() => setIsPasswordModalOpen(true)}
         onLogout={handleLogout}
       />
+
+      <SyncStatus />
 
       {/* Main Layout */}
       <div className="flex flex-1 overflow-hidden">

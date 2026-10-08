@@ -79,6 +79,7 @@ export interface UserRecord {
   isDeleted: boolean;
   failedLoginAttempts: number;
   lockedUntil?: string;
+  mustChangePassword?: boolean;
   createdAt: string;
 }
 
@@ -101,6 +102,7 @@ export interface PatientRecord {
   address?: string;
   isDeleted: boolean;
   createdAt: string;
+  syncSeq?: number; // monotonically increasing change sequence for offline pull
 }
 
 export interface ProductRecord {
@@ -246,13 +248,31 @@ export interface MigrationJobRecord {
   id: string;
   tenantId: string;
   sourceName: string;
-  sourceType: 'SQLServer' | 'CSV' | 'Access';
-  status: 'Discovered' | 'Staged' | 'Validated' | 'Committed' | 'Failed';
-  totalSourceRows: number;
+  sourceType: 'CSV' | 'JSON';
+  entity: 'patients' | 'accounts' | 'products' | 'invoices' | 'journal_entries';
+  status: 'Staged' | 'Validated' | 'Committed' | 'Rejected';
+  totalRows: number;
   validRows: number;
+  duplicateRows: number;
   invalidRows: number;
   importedRows: number;
-  reconciliationStatus?: 'Matched' | 'Discrepancy';
+  errors: Array<{ row: number; field?: string; message: string }>;
+  // Normalized rows awaiting commit. Cleared once the import succeeds.
+  stagedRows: any[];
+  sourceChecksum: string;
+  createdBy: string;
+  createdAt: string;
+  committedAt?: string;
+}
+
+export interface SyncOperationRecord {
+  id: string; // client-generated operation id (idempotency key)
+  tenantId: string;
+  deviceId: string;
+  type: string;
+  status: 'applied' | 'conflict' | 'rejected';
+  message: string;
+  resultId?: string;
   createdAt: string;
 }
 
@@ -272,6 +292,8 @@ export interface DatabaseSchema {
   accounts: AccountRecord[];
   accountingPeriods: AccountingPeriodRecord[];
   payments: PaymentRecord[];
+  syncOperations: SyncOperationRecord[];
+  syncCursor: number;
   auditLogs: AuditRecord[];
   licenses: LicenseRecord[];
   supportTickets: SupportTicketRecord[];
@@ -322,6 +344,16 @@ export class EnterpriseDatabase {
     if (!d.accounts) { d.accounts = []; changed = true; }
     if (!d.accountingPeriods) { d.accountingPeriods = []; changed = true; }
     if (!d.payments) { d.payments = []; changed = true; }
+    if (!d.syncOperations) { d.syncOperations = []; changed = true; }
+    if (typeof d.syncCursor !== 'number') { d.syncCursor = 0; changed = true; }
+
+    // Give pre-existing patients a sync sequence so offline devices can pull them.
+    for (const p of d.patients) {
+      if (typeof p.syncSeq !== 'number') {
+        p.syncSeq = ++d.syncCursor;
+        changed = true;
+      }
+    }
 
     // Every tenant gets the default chart of accounts; existing accounts are never overwritten.
     for (const tenant of d.tenants) {
@@ -793,6 +825,8 @@ export class EnterpriseDatabase {
       accounts: [],
       accountingPeriods: [],
       payments: [],
+      syncOperations: [],
+      syncCursor: 0,
       auditLogs: initialAudits,
       licenses: initialLicenses,
       supportTickets: initialTickets,

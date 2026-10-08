@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Api } from '../services/api';
+import { cachePatients, getCachedPatients, enqueuePatient, getOutbox, isNetworkError, SYNC_EVENT } from '../services/outbox';
 import { Search, UserPlus, Users, Phone, AlertCircle, RefreshCw } from 'lucide-react';
 
 export const PatientsView: React.FC = () => {
@@ -17,17 +18,62 @@ export const PatientsView: React.FC = () => {
   const [gender, setGender] = useState('ذكر');
   const [address, setAddress] = useState('');
 
+  const [offlineInfo, setOfflineInfo] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  // Pending offline creations are shown alongside server records until they are synced.
+  const pendingRows = () =>
+    getOutbox()
+      .filter(o => o.type === 'patient.create')
+      .map(o => ({
+        id: `pending-${o.opId}`,
+        medicalNo: String(o.payload.medicalNo ?? ''),
+        fullName: String(o.payload.fullName ?? ''),
+        phone: String(o.payload.phone ?? ''),
+        birthDate: o.payload.birthDate ? String(o.payload.birthDate) : '',
+        gender: String(o.payload.gender ?? ''),
+        pending: true,
+      }));
+
   const fetchPatients = async (query = '') => {
     setLoading(true);
+    setError(null);
     try {
       const data = await Api.getPatients(query);
-      setPatients(data);
+      if (!query) cachePatients(data);
+      const q = query.trim().toLowerCase();
+      const pending = pendingRows().filter(p => !q || [p.fullName, p.medicalNo, p.phone].some(v => v.toLowerCase().includes(q)));
+      setPatients([...pending, ...data]);
+      setOfflineInfo(null);
     } catch (err: any) {
-      setError(err.message);
+      if (isNetworkError(err)) {
+        // Offline: serve the last synced list (filtered locally) plus pending local creations.
+        const cached = getCachedPatients();
+        const q = query.trim().toLowerCase();
+        const matches = (p: any) =>
+          !q || [p.fullName, p.medicalNo, p.phone].some((v: unknown) => String(v ?? '').toLowerCase().includes(q));
+        const rows = [...pendingRows(), ...cached.patients].filter(matches);
+        setPatients(rows);
+        setOfflineInfo(
+          cached.savedAt
+            ? `أنت غير متصل. البيانات من آخر مزامنة (${new Date(cached.savedAt).toLocaleString('ar')}).`
+            : 'أنت غير متصل ولا توجد بيانات محفوظة بعد.'
+        );
+      } else {
+        setError(err.message);
+      }
     } finally {
       setLoading(false);
     }
   };
+
+  // Re-render when the outbox changes (sync finished, new offline record).
+  const [, setOutboxVersion] = useState(0);
+  useEffect(() => {
+    const refresh = () => setOutboxVersion(v => v + 1);
+    window.addEventListener(SYNC_EVENT, refresh);
+    return () => window.removeEventListener(SYNC_EVENT, refresh);
+  }, []);
 
   useEffect(() => {
     fetchPatients();
@@ -39,7 +85,8 @@ export const PatientsView: React.FC = () => {
   };
 
   const handleOpenNewModal = () => {
-    setMedicalNo(`MED-${1000 + patients.length + 1}`);
+    // Count pending offline creations too, so the suggested number is less likely to collide.
+    setMedicalNo(`MED-${1000 + patients.length + pendingRows().length + 1}`);
     setFullName('');
     setPhone('');
     setBirthDate('');
@@ -53,19 +100,28 @@ export const PatientsView: React.FC = () => {
     e.preventDefault();
     setError(null);
 
-    try {
-      await Api.createPatient({
-        medicalNo,
-        fullName,
-        phone,
-        birthDate: birthDate || undefined,
-        gender,
-        address: address || undefined,
-      });
+    const payload = {
+      medicalNo,
+      fullName,
+      phone,
+      birthDate: birthDate || undefined,
+      gender,
+      address: address || undefined,
+    };
 
+    try {
+      await Api.createPatient(payload);
       setIsModalOpen(false);
       fetchPatients(searchTerm);
     } catch (err: any) {
+      if (isNetworkError(err)) {
+        // Keep the record on this device; it is pushed to the server when the connection returns.
+        enqueuePatient(payload);
+        setIsModalOpen(false);
+        setNotice('تم حفظ المريض على هذا الجهاز وسيُرفع إلى الخادم عند عودة الاتصال.');
+        fetchPatients(searchTerm);
+        return;
+      }
       setError(err.message || 'حدث خطأ أثناء إضافة المريض.');
     }
   };
@@ -127,6 +183,16 @@ export const PatientsView: React.FC = () => {
         </form>
       </div>
 
+      {offlineInfo && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-800 text-xs rounded-lg p-3">{offlineInfo}</div>
+      )}
+      {notice && (
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs rounded-lg p-3 flex justify-between">
+          <span>{notice}</span>
+          <button onClick={() => setNotice(null)} className="cursor-pointer font-bold">×</button>
+        </div>
+      )}
+
       {/* Patients Data Table */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
@@ -160,6 +226,9 @@ export const PatientsView: React.FC = () => {
                   <tr key={patient.id} className="hover:bg-slate-50/80 transition-colors">
                     <td className="px-5 py-3.5 font-mono font-bold text-sky-700 text-xs">
                       {patient.medicalNo}
+                      {patient.pending && (
+                        <span className="ms-2 font-sans font-semibold text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">بانتظار المزامنة</span>
+                      )}
                     </td>
                     <td className="px-5 py-3.5 font-bold text-slate-900">
                       {patient.fullName}

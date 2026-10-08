@@ -5,6 +5,8 @@ import crypto from 'crypto';
 export const ACCOUNT_TYPES = ['Asset', 'Liability', 'Equity', 'Revenue', 'Expense'] as const;
 export type AccountType = (typeof ACCOUNT_TYPES)[number];
 
+export const VAT_RATE = 0.15;
+
 export const SYSTEM_ACCOUNTS = {
   CASH: '1000',
   RECEIVABLES: '1100',

@@ -1,14 +1,13 @@
 import { Router, Response } from 'express';
 import { db, InvoiceRecord, InvoiceLineRecord, PaymentRecord } from './db';
 import { AuthenticatedRequest, authenticate, requirePermission, logAudit } from './auth';
-import { DomainError, SYSTEM_ACCOUNTS, nextSequence, toPositiveCents, todayIso, newId } from './chart';
+import { DomainError, SYSTEM_ACCOUNTS, VAT_RATE, nextSequence, toPositiveCents, todayIso, newId } from './chart';
 import { createDraftJournal, assertPeriodOpen } from './ledger';
 
 // Billing: invoices, payments, refunds and cancellations. Every money movement posts a
 // balanced draft journal entry in the same transaction as the business record.
 export const billingRouter = Router();
 
-const VAT_RATE = 0.15;
 const PAYMENT_METHODS = ['Cash', 'Card', 'Bank Transfer', 'Insurance'];
 
 function sendError(res: Response, err: unknown) {
@@ -51,7 +50,7 @@ billingRouter.get('/billing/invoices', authenticate, requirePermission('Billing'
 billingRouter.get('/billing/invoices/:id/payments', authenticate, requirePermission('Billing', 'View'), (req: AuthenticatedRequest, res: Response) => {
   try {
     const tenantId = req.user!.tenantId;
-    const invoice = findInvoice(tenantId, req.params.id);
+    const invoice = findInvoice(tenantId, String(req.params.id));
     const payments = db.getRawData().payments.filter(p => p.tenantId === tenantId && p.invoiceId === invoice.id);
     res.json({ invoice: decorate(tenantId, invoice), movements: payments });
   } catch (err) {
@@ -184,7 +183,7 @@ billingRouter.post('/billing/invoices/:id/payments', authenticate, requirePermis
 
   db.beginTransaction();
   try {
-    const invoice = findInvoice(tenantId, req.params.id);
+    const invoice = findInvoice(tenantId, String(req.params.id));
     if (invoice.status !== 'Posted') throw new DomainError(400, 'لا يمكن تحصيل فاتورة ملغاة.');
     const { balanceCents } = invoiceBalance(tenantId, invoice);
     if (amountCents > balanceCents) {
@@ -239,7 +238,7 @@ billingRouter.post('/billing/invoices/:id/refunds', authenticate, requirePermiss
 
   db.beginTransaction();
   try {
-    const invoice = findInvoice(tenantId, req.params.id);
+    const invoice = findInvoice(tenantId, String(req.params.id));
     if (invoice.status !== 'Posted') throw new DomainError(400, 'لا يمكن استرداد فاتورة ملغاة.');
     const { netPaidCents } = invoiceBalance(tenantId, invoice);
     if (amountCents > netPaidCents) {
@@ -294,7 +293,7 @@ billingRouter.post('/billing/invoices/:id/cancel', authenticate, requirePermissi
 
   db.beginTransaction();
   try {
-    const invoice = findInvoice(tenantId, req.params.id);
+    const invoice = findInvoice(tenantId, String(req.params.id));
     if (invoice.status !== 'Posted') throw new DomainError(400, 'الفاتورة ملغاة مسبقاً.');
     const { netPaidCents } = invoiceBalance(tenantId, invoice);
     if (netPaidCents !== 0) {

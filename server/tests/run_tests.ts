@@ -52,8 +52,8 @@ async function runTestSuite() {
   // Test 2: Accounting Invariant (Debit === Credit)
   console.log('\n--- 2. Accounting & Financial Invariant Tests ---');
   // Sub-test: Unbalanced Entry (Debit 1000, Credit 900)
-  const debit1 = 100000; // 1000.00
-  const credit1 = 90000;  // 900.00
+  const debit1: number = 100000; // 1000.00
+  const credit1: number = 90000;  // 900.00
   const isUnbalancedRejected = debit1 !== credit1;
   recordTest(
     'Unbalanced Journal Entry Rejection (Debit 1000 != Credit 900)',

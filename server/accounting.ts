@@ -78,7 +78,7 @@ accountingRouter.post('/accounting/accounts', authenticate, requirePermission('A
 
 accountingRouter.patch('/accounting/accounts/:code', authenticate, requirePermission('Accounting', 'Create'), (req: AuthenticatedRequest, res: Response) => {
   const tenantId = req.user!.tenantId;
-  const account = db.getRawData().accounts.find(a => a.tenantId === tenantId && a.code === req.params.code);
+  const account = db.getRawData().accounts.find(a => a.tenantId === tenantId && a.code === String(req.params.code));
   if (!account) {
     res.status(404).json({ error: 'الحساب غير موجود.' });
     return;
@@ -166,7 +166,7 @@ accountingRouter.post('/accounting/journal-entries', authenticate, requirePermis
 
 accountingRouter.post('/accounting/journal-entries/:id/approve', authenticate, requirePermission('Accounting', 'Approve'), (req: AuthenticatedRequest, res: Response) => {
   const tenantId = req.user!.tenantId;
-  const entry = db.getRawData().journalEntries.find(j => j.id === req.params.id && j.tenantId === tenantId);
+  const entry = db.getRawData().journalEntries.find(j => j.id === String(req.params.id) && j.tenantId === tenantId);
   if (!entry) {
     res.status(404).json({ error: 'القيد المحاسبي غير موجود.' });
     return;
@@ -209,7 +209,7 @@ accountingRouter.get('/accounting/periods', authenticate, requirePermission('Acc
 
 accountingRouter.post('/accounting/periods/:period/close', authenticate, requirePermission('Accounting', 'Approve'), (req: AuthenticatedRequest, res: Response) => {
   const tenantId = req.user!.tenantId;
-  const period = req.params.period;
+  const period = String(req.params.period);
   if (!/^\d{4}-\d{2}$/.test(period)) {
     res.status(400).json({ error: 'صيغة الفترة يجب أن تكون YYYY-MM.' });
     return;
@@ -229,12 +229,9 @@ accountingRouter.post('/accounting/periods/:period/close', authenticate, require
     return;
   }
 
-  const raw = db.getRawData();
-  let record = periodRecord(tenantId, period);
-  if (!record) {
-    record = { id: newId('per'), tenantId, period, status: 'Open' };
-    raw.accountingPeriods.push(record);
-  }
+  const existing = periodRecord(tenantId, period);
+  const record: AccountingPeriodRecord = existing ?? { id: newId('per'), tenantId, period, status: 'Open' };
+  if (!existing) db.getRawData().accountingPeriods.push(record);
   record.status = 'Closed';
   record.closedAt = new Date().toISOString();
   record.closedBy = req.user!.userId;
@@ -246,7 +243,7 @@ accountingRouter.post('/accounting/periods/:period/close', authenticate, require
 
 accountingRouter.post('/accounting/periods/:period/reopen', authenticate, requirePermission('Accounting', 'Approve'), (req: AuthenticatedRequest, res: Response) => {
   const tenantId = req.user!.tenantId;
-  const period = req.params.period;
+  const period = String(req.params.period);
   const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
   if (reason.length < 10) {
     res.status(400).json({ error: 'سبب إعادة فتح الفترة مطلوب (10 أحرف على الأقل).' });

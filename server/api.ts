@@ -3,6 +3,8 @@ import bcrypt from 'bcryptjs';
 import { usersRouter } from './users';
 import { billingRouter } from './billing';
 import { accountingRouter } from './accounting';
+import { migrationRouter } from './migration';
+import { syncRouter } from './sync';
 import {
   db,
   PatientRecord,
@@ -325,7 +327,7 @@ apiRouter.post('/inventory/products/:id/stock', authenticate, requirePermission(
   product.stock += qty;
   db.save();
 
-  logAudit(tenantId, req.user!.userId, 'AddStock', 'Inventory.Products', id, `توريد كمية ${qty} ${product.unit} للمنتج ${product.name}. الرصيد: ${product.stock}`);
+  logAudit(tenantId, req.user!.userId, 'AddStock', 'Inventory.Products', String(id), `توريد كمية ${qty} ${product.unit} للمنتج ${product.name}. الرصيد: ${product.stock}`);
   res.json({ success: true, product });
 });
 
@@ -364,92 +366,10 @@ apiRouter.get('/reports/dashboard', authenticate, requirePermission('Reports', '
 });
 
 // ==========================================
-// 8. DATA MIGRATION & RECONCILIATION
+// 8. DATA MIGRATION & OFFLINE SYNC (see server/migration.ts and server/sync.ts)
 // ==========================================
-apiRouter.post('/migration/discover', authenticate, requirePermission('Migration', 'Create'), (req: AuthenticatedRequest, res: Response) => {
-  const { sourceName } = req.body;
-  const raw = db.getRawData();
-  const tenantId = req.user!.tenantId;
-
-  const jobId = 'mig-' + Date.now();
-  const job: MigrationJobRecord = {
-    id: jobId,
-    tenantId,
-    sourceName: sourceName || 'SQLServer Legacy Clinic',
-    sourceType: 'SQLServer',
-    status: 'Discovered',
-    totalSourceRows: 5,
-    validRows: 0,
-    invalidRows: 0,
-    importedRows: 0,
-    createdAt: new Date().toISOString(),
-  };
-
-  raw.migrationJobs.unshift(job);
-  db.save();
-
-  logAudit(tenantId, req.user!.userId, 'Discover', 'Migration.Jobs', jobId, `اكتشاف جداول مصدر الترحيل: ${job.sourceName}`);
-
-  res.json({
-    job,
-    tables: ['LegacyPatients', 'PatientArchive', 'ClinicClients'],
-  });
-});
-
-apiRouter.post('/migration/commit', authenticate, requirePermission('Migration', 'Commit'), (req: AuthenticatedRequest, res: Response) => {
-  const { jobId, patients } = req.body;
-  if (!Array.isArray(patients) || patients.length === 0) {
-    res.status(400).json({ error: 'قائمة المرضى المراد استيرادهم فارغة.' });
-    return;
-  }
-
-  const raw = db.getRawData();
-  const tenantId = req.user!.tenantId;
-
-  const job = raw.migrationJobs.find(j => j.id === jobId && j.tenantId === tenantId);
-
-  db.beginTransaction();
-  try {
-    let importedCount = 0;
-    const existingMedNos = new Set(raw.patients.filter(p => p.tenantId === tenantId && !p.isDeleted).map(p => p.medicalNo.toLowerCase()));
-
-    for (const p of patients) {
-      if (!p.medicalNo || !p.fullName) continue;
-      if (existingMedNos.has(p.medicalNo.toLowerCase())) continue;
-
-      const newPatient: PatientRecord = {
-        id: 'pat-mig-' + Date.now() + '-' + importedCount,
-        tenantId,
-        medicalNo: p.medicalNo.trim(),
-        fullName: p.fullName.trim(),
-        phone: p.phone || '',
-        birthDate: p.birthDate,
-        gender: p.gender || 'غير محدد',
-        address: p.address || '',
-        isDeleted: false,
-        createdAt: new Date().toISOString(),
-      };
-
-      raw.patients.unshift(newPatient);
-      existingMedNos.add(newPatient.medicalNo.toLowerCase());
-      importedCount++;
-    }
-
-    if (job) {
-      job.status = 'Committed';
-      job.importedRows = importedCount;
-      job.reconciliationStatus = 'Matched';
-    }
-
-    logAudit(tenantId, req.user!.userId, 'Commit', 'Migration.Patients', jobId, `ترحيل ذري ناجح لـ ${importedCount} مريض ومطابقة Reconciliation`);
-
-    db.commit();
-    res.json({ success: true, importedCount, reconciliation: 'Matched' });
-  } catch (err: any) {
-    db.rollback();
-    res.status(500).json({ error: `فشل الترحيل: ${err.message}` });
-  }
-});
+apiRouter.use(migrationRouter);
+apiRouter.use(syncRouter);
 
 // ==========================================
 // 9. HEALTH CENTER (فحوصات صحة حقيقية)

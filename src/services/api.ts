@@ -38,6 +38,22 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 }
 
 export const Api = {
+  // Migration (file-based import)
+  getMigrationEntities: () => request<any[]>('/migration/entities'),
+  getMigrationJobs: () => request<any[]>('/migration/jobs'),
+  stageMigration: (data: { entity: string; rows: Record<string, unknown>[]; sourceName: string; sourceType: 'CSV' | 'JSON' }) =>
+    request<any>('/migration/jobs', { method: 'POST', body: JSON.stringify(data) }),
+  commitMigration: (id: string) => request<any>(`/migration/jobs/${encodeURIComponent(id)}/commit`, { method: 'POST' }),
+  discardMigration: (id: string) => request<any>(`/migration/jobs/${encodeURIComponent(id)}/discard`, { method: 'POST' }),
+
+  // Offline sync
+  syncPush: (deviceId: string, operations: Array<{ opId: string; type: string; payload: unknown }>) =>
+    request<{ results: Array<{ opId: string; status: string; message: string; resultId?: string }>; cursor: number }>(
+      '/sync/push',
+      { method: 'POST', body: JSON.stringify({ deviceId, operations }) }
+    ),
+  syncPull: (since: number) => request<{ patients: any[]; cursor: number; hasMore: boolean }>(`/sync/pull?since=${since}`),
+
   // Billing actions
   getInvoicePayments: (id: string) => request<{ invoice: any; movements: any[] }>(`/billing/invoices/${encodeURIComponent(id)}/payments`),
   payInvoice: (id: string, data: { amount: number; method: string; reference?: string }) =>
@@ -172,18 +188,6 @@ export const Api = {
     }),
 
   // Migration
-  discoverMigration: (sourceName?: string) =>
-    request<any>('/migration/discover', {
-      method: 'POST',
-      body: JSON.stringify({ sourceName }),
-    }),
-
-  commitMigration: (jobId: string, patients: any[]) =>
-    request<any>('/migration/commit', {
-      method: 'POST',
-      body: JSON.stringify({ jobId, patients }),
-    }),
-
   // Backup & Audit
   exportBackup: () => request<any>('/backup/export'),
 
