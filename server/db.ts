@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import bcrypt from 'bcryptjs';
 import { ALL_PERMISSIONS } from './permissions';
+import { DEFAULT_CHART } from './chart';
 
 const DATA_DIR = path.resolve(process.cwd(), 'data');
 const DB_FILE = path.join(DATA_DIR, 'meaaf_enterprise_db.json');
@@ -137,6 +138,9 @@ export interface InvoiceRecord {
   taxCents: number;
   totalCents: number;
   status: 'Posted' | 'Cancelled';
+  cancelledAt?: string;
+  cancelledBy?: string;
+  cancelReason?: string;
   lines: InvoiceLineRecord[];
   journalEntryId: string;
   createdAt: string;
@@ -164,6 +168,42 @@ export interface JournalEntryRecord {
   approvedBy?: string;
   createdAt: string;
   lines: JournalLineRecord[];
+}
+
+export interface AccountRecord {
+  id: string;
+  tenantId: string;
+  code: string;
+  name: string;
+  type: 'Asset' | 'Liability' | 'Equity' | 'Revenue' | 'Expense';
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface AccountingPeriodRecord {
+  id: string;
+  tenantId: string;
+  period: string; // YYYY-MM
+  status: 'Open' | 'Closed';
+  closedAt?: string;
+  closedBy?: string;
+  reopenReason?: string;
+}
+
+// Money movement against an invoice. Refunds are stored as separate records (never edited).
+export interface PaymentRecord {
+  id: string;
+  tenantId: string;
+  invoiceId: string;
+  kind: 'Payment' | 'Refund';
+  amountCents: number;
+  method: string;
+  reference?: string;
+  reason?: string;
+  journalEntryId: string;
+  entryDate: string;
+  createdBy: string;
+  createdAt: string;
 }
 
 export interface AuditRecord {
@@ -229,6 +269,9 @@ export interface DatabaseSchema {
   products: ProductRecord[];
   invoices: InvoiceRecord[];
   journalEntries: JournalEntryRecord[];
+  accounts: AccountRecord[];
+  accountingPeriods: AccountingPeriodRecord[];
+  payments: PaymentRecord[];
   auditLogs: AuditRecord[];
   licenses: LicenseRecord[];
   supportTickets: SupportTicketRecord[];
@@ -274,6 +317,29 @@ export class EnterpriseDatabase {
   private repairRbac(): void {
     const d = dbData;
     let changed = false;
+
+    // Collections added after the first release may be missing from older data files.
+    if (!d.accounts) { d.accounts = []; changed = true; }
+    if (!d.accountingPeriods) { d.accountingPeriods = []; changed = true; }
+    if (!d.payments) { d.payments = []; changed = true; }
+
+    // Every tenant gets the default chart of accounts; existing accounts are never overwritten.
+    for (const tenant of d.tenants) {
+      for (const def of DEFAULT_CHART) {
+        if (!d.accounts.some(a => a.tenantId === tenant.id && a.code === def.code)) {
+          d.accounts.push({
+            id: `acc-${tenant.id}-${def.code}`,
+            tenantId: tenant.id,
+            code: def.code,
+            name: def.name,
+            type: def.type,
+            isActive: true,
+            createdAt: new Date().toISOString(),
+          });
+          changed = true;
+        }
+      }
+    }
 
     for (const tenant of d.tenants) {
       const roleId = tenant.id === 'tenant-001' ? 'role-admin' : `role-admin-${tenant.id}`;
@@ -724,6 +790,9 @@ export class EnterpriseDatabase {
       products: initialProducts,
       invoices: initialInvoices,
       journalEntries: initialJournals,
+      accounts: [],
+      accountingPeriods: [],
+      payments: [],
       auditLogs: initialAudits,
       licenses: initialLicenses,
       supportTickets: initialTickets,

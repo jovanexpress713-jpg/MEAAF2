@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Api } from '../services/api';
+import { AccountingAdminPanels } from './AccountingAdmin';
 import {
   Scale,
   CheckCircle,
@@ -329,6 +330,7 @@ export const AccountingView: React.FC = () => {
           })}
         </div>
       </div>
+      <AccountingAdminPanels />
     </div>
   );
 };

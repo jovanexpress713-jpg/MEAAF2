@@ -38,6 +38,27 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 }
 
 export const Api = {
+  // Billing actions
+  getInvoicePayments: (id: string) => request<{ invoice: any; movements: any[] }>(`/billing/invoices/${encodeURIComponent(id)}/payments`),
+  payInvoice: (id: string, data: { amount: number; method: string; reference?: string }) =>
+    request<any>(`/billing/invoices/${encodeURIComponent(id)}/payments`, { method: 'POST', body: JSON.stringify(data) }),
+  refundInvoice: (id: string, data: { amount: number; reason: string }) =>
+    request<any>(`/billing/invoices/${encodeURIComponent(id)}/refunds`, { method: 'POST', body: JSON.stringify(data) }),
+  cancelInvoice: (id: string, data: { reason: string }) =>
+    request<any>(`/billing/invoices/${encodeURIComponent(id)}/cancel`, { method: 'POST', body: JSON.stringify(data) }),
+
+  // Accounting administration
+  getAccounts: () => request<any[]>('/accounting/accounts'),
+  createAccount: (data: { code: string; name: string; type: string }) =>
+    request<any>('/accounting/accounts', { method: 'POST', body: JSON.stringify(data) }),
+  updateAccount: (code: string, data: { name?: string; isActive?: boolean }) =>
+    request<any>(`/accounting/accounts/${encodeURIComponent(code)}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  getPeriods: () => request<any[]>('/accounting/periods'),
+  closePeriod: (period: string) => request<any>(`/accounting/periods/${period}/close`, { method: 'POST' }),
+  reopenPeriod: (period: string, reason: string) =>
+    request<any>(`/accounting/periods/${period}/reopen`, { method: 'POST', body: JSON.stringify({ reason }) }),
+  getTrialBalance: (asOf?: string) =>
+    request<any>(`/accounting/trial-balance${asOf ? `?asOf=${encodeURIComponent(asOf)}` : ''}`),
   // Users & roles
   getUsers: () => request<any[]>('/users'),
   createUser: (data: { username: string; displayName: string; roleId: string }) =>
