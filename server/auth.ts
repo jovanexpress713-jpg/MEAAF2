@@ -57,6 +57,12 @@ export function clearMustChangeForUser(userId: string): void {
   }
 }
 
+export function revokeSessionsForUser(userId: string): void {
+  for (const [token, session] of sessions.entries()) {
+    if (session.userId === userId) sessions.delete(token);
+  }
+}
+
 export function revokeSession(token: string): void {
   sessions.delete(token);
 }
@@ -103,7 +109,8 @@ export function requirePermission(resource: string, action: string) {
     }
 
     const permissionKey = `${resource}:${action}`;
-    const hasPerm = req.user.permissions.includes(permissionKey) || req.user.roleName.includes('Enterprise Admin');
+    // Permissions come only from the role's explicit list; the role's display name grants nothing.
+    const hasPerm = req.user.permissions.includes(permissionKey);
 
     if (!hasPerm) {
       // Audit security rejection

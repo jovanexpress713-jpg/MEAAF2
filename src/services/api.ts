@@ -38,6 +38,24 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 }
 
 export const Api = {
+  // Users & roles
+  getUsers: () => request<any[]>('/users'),
+  createUser: (data: { username: string; displayName: string; roleId: string }) =>
+    request<{ user: any; temporaryPassword: string }>('/users', { method: 'POST', body: JSON.stringify(data) }),
+  updateUser: (id: string, data: { displayName?: string; roleId?: string; isActive?: boolean }) =>
+    request<{ user: any }>(`/users/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  resetUserPassword: (id: string) =>
+    request<{ user: any; temporaryPassword: string }>(`/users/${encodeURIComponent(id)}/reset-password`, { method: 'POST' }),
+  unlockUser: (id: string) =>
+    request<{ user: any }>(`/users/${encodeURIComponent(id)}/unlock`, { method: 'POST' }),
+  getRoles: () => request<{ roles: any[]; catalog: Record<string, string[]> }>('/roles'),
+  createRole: (data: { name: string; permissions: string[] }) =>
+    request<{ role: any }>('/roles', { method: 'POST', body: JSON.stringify(data) }),
+  updateRole: (id: string, data: { name?: string; permissions?: string[] }) =>
+    request<{ role: any }>(`/roles/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  deleteRole: (id: string) =>
+    request<{ success: boolean }>(`/roles/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
   // Auth
   login: (username: string, password: string) =>
     request<{ token: string; user: any; tenant: any }>('/auth/login', {

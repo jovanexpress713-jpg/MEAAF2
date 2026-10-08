@@ -1,5 +1,6 @@
 import { Router, Response } from 'express';
 import bcrypt from 'bcryptjs';
+import { usersRouter } from './users';
 import {
   db,
   PatientRecord,
@@ -836,3 +837,6 @@ apiRouter.get('/audit', authenticate, (req: AuthenticatedRequest, res: Response)
   const tenantId = req.user!.tenantId;
   res.json(raw.auditLogs.filter(a => a.tenantId === tenantId));
 });
+
+// User & role administration (see server/users.ts)
+apiRouter.use(usersRouter);

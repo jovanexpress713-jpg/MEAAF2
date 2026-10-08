@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import bcrypt from 'bcryptjs';
+import { ALL_PERMISSIONS } from './permissions';
 
 const DATA_DIR = path.resolve(process.cwd(), 'data');
 const DB_FILE = path.join(DATA_DIR, 'meaaf_enterprise_db.json');
@@ -256,12 +257,63 @@ export class EnterpriseDatabase {
       try {
         const raw = fs.readFileSync(DB_FILE, 'utf-8');
         dbData = JSON.parse(raw);
+        this.repairRbac();
         return;
       } catch (err) {
         console.error('Failed to parse DB_FILE, seeding fresh database...', err);
       }
     }
     this.seedDefaultData();
+    this.repairRbac();
+  }
+
+  // Idempotent repair of role data:
+  //  - every tenant has its own full-admin role (tenant isolation: no cross-tenant role references);
+  //  - admin roles carry every catalog permission (picks up newly added permissions);
+  //  - users reference a role that exists in their own tenant, and cached role names match.
+  private repairRbac(): void {
+    const d = dbData;
+    let changed = false;
+
+    for (const tenant of d.tenants) {
+      const roleId = tenant.id === 'tenant-001' ? 'role-admin' : `role-admin-${tenant.id}`;
+      let adminRole = d.roles.find(r => r.id === roleId && r.tenantId === tenant.id);
+      if (!adminRole) {
+        adminRole = {
+          id: roleId,
+          tenantId: tenant.id,
+          name: 'مدير النظام الكامل (Enterprise Admin)',
+          permissions: [...ALL_PERMISSIONS],
+        };
+        d.roles.push(adminRole);
+        changed = true;
+      }
+      const missing = ALL_PERMISSIONS.filter(p => !adminRole!.permissions.includes(p));
+      if (missing.length > 0) {
+        adminRole.permissions.push(...missing);
+        changed = true;
+      }
+    }
+
+    for (const user of d.users) {
+      const role = d.roles.find(r => r.id === user.roleId && r.tenantId === user.tenantId);
+      if (!role) {
+        // Legacy cross-tenant reference (e.g. tenant-002 admin pointing at tenant-001's role).
+        const fallback = d.roles.find(r => r.tenantId === user.tenantId && r.name.includes('Enterprise Admin'));
+        if (fallback && user.roleId === 'role-admin' && user.tenantId !== 'tenant-001') {
+          user.roleId = fallback.id;
+          user.roleName = fallback.name;
+          changed = true;
+        }
+        continue;
+      }
+      if (user.roleName !== role.name) {
+        user.roleName = role.name;
+        changed = true;
+      }
+    }
+
+    if (changed) this.save();
   }
 
   public save(): void {

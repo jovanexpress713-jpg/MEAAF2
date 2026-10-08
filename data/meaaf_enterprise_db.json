@@ -149,8 +149,8 @@
       "username": "admin_tenantB",
       "displayName": "مدير منشأة الشفاء (Tenant B)",
       "passwordHash": "$2b$10$ubj2Jpf2c0Dqn1JIzIlQCufT7MjNbWfOHTMXZTNSJQk794C3puacG",
-      "roleId": "role-admin",
-      "roleName": "مدير المنشأة B",
+      "roleId": "role-admin-tenant-002",
+      "roleName": "مدير النظام الكامل (Enterprise Admin)",
       "isActive": true,
       "isDeleted": false,
       "failedLoginAttempts": 0,
@@ -190,7 +190,11 @@
         "Control:Configure",
         "Health:View",
         "Support:View",
-        "Support:Create"
+        "Support:Create",
+        "Users:View",
+        "Users:Create",
+        "Users:Edit",
+        "Users:ResetPassword"
       ]
     },
     {
@@ -216,6 +220,45 @@
         "Accounting:Approve",
         "Reports:View",
         "Reports:Export"
+      ]
+    },
+    {
+      "id": "role-admin-tenant-002",
+      "tenantId": "tenant-002",
+      "name": "مدير النظام الكامل (Enterprise Admin)",
+      "permissions": [
+        "Patients:View",
+        "Patients:Create",
+        "Patients:Edit",
+        "Patients:Delete",
+        "Billing:View",
+        "Billing:Create",
+        "Billing:Approve",
+        "Accounting:View",
+        "Accounting:Create",
+        "Accounting:Approve",
+        "Inventory:View",
+        "Inventory:Create",
+        "Inventory:Edit",
+        "Reports:View",
+        "Reports:Export",
+        "Migration:View",
+        "Migration:Create",
+        "Migration:Commit",
+        "Backup:View",
+        "Backup:Create",
+        "Backup:Restore",
+        "Devices:View",
+        "Devices:Configure",
+        "Control:View",
+        "Control:Configure",
+        "Health:View",
+        "Support:View",
+        "Support:Create",
+        "Users:View",
+        "Users:Create",
+        "Users:Edit",
+        "Users:ResetPassword"
       ]
     }
   ],

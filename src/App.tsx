@@ -17,6 +17,7 @@ import { HealthCenterView } from './views/HealthCenterView';
 import { ControlCenterView } from './views/ControlCenterView';
 import { DevicesView } from './views/DevicesView';
 import { SupportView } from './views/SupportView';
+import { UsersView } from './views/UsersView';
 
 export const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<any | null>(null);
@@ -108,6 +109,7 @@ export const App: React.FC = () => {
           {currentTab === 'support' && <SupportView />}
           {currentTab === 'backup' && <BackupView />}
           {currentTab === 'audit' && <AuditView />}
+          {currentTab === 'users' && <UsersView currentUserId={currentUser.userId ?? currentUser.id} />}
         </main>
       </div>
 
