@@ -3,3 +3,6 @@ dist/
 package-lock.json
 *.log
 .env
+**/bin/
+**/obj/
+*.user
