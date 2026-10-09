@@ -5,21 +5,17 @@
 
 ## التقنية والمشاريع
 
-- Windows desktop باستخدام WPF و.NET 8.
-- SQL Server لبيانات النظام، وSQLite محلياً كقاعدة أولية لطابور offline.
-- `MEAAF.Core` — النماذج والعقود والتحقق.
-- `MEAAF.Data` — الوصول إلى SQL Server والمستودعات وSQLite.
-- `MEAAF.Security` — تسجيل الدخول، الصلاحيات، التدقيق، والتحقق من توقيع الرخصة.
-- `MEAAF.Business` — المرضى، الفوترة، القيود، المخزون، التقارير، النسخ الاحتياطي، وترحيل البيانات.
-- `MEAAF.Connectors` — موصل SQL Server لمصدر الترحيل.
-- `MEAAF.UI` — واجهة WPF عربية.
-- `MEAAF.Tests` — اختبارات قواعد التحقق المحاسبي.
+- `desktop/MEAAF.WPF` — واجهة سطح مكتب عربية بـWPF و.NET 8 لوحدات الفوترة والمحاسبة والصيدلية والتنويم.
+- `backend/MEAAF.Backend` — Web API بـASP.NET Core 8 للعمليات المحاسبية والمخزون والإقفال.
+- `db` — خط أساس SQL Server لدليل الحسابات والقيود والصيدلية والتنويم والتأمين والتدقيق.
+- `src` و`server` — واجهة React وخادم TypeScript تجريبيان، مستقلان حالياً عن تطبيق سطح المكتب.
+- `MEAAF.sln` — الحل الجامع لمشروعي .NET الخلفي وسطح المكتب.
 
-## خدمة .NET 8 الخلفية
+## خدمة .NET 8 الخلفية وواجهة سطح المكتب
 
-أضيفت خدمة API مستقلة في `backend/MEAAF.Backend.sln` تنفّذ ترحيل الفواتير إلى الأستاذ، وصرف الصيدلية مع تحديث المخزون ذرياً، وحساب الإقامة، والإقفال السنوي. تستخدم الخدمة مخطط SQL Server الحالي ومعاملات فعلية بدلاً من النتائج الوهمية؛ تعليمات التشغيل وعقود النقاط في [`backend/README.md`](backend/README.md).
+تنفّذ خدمة API ترحيل الفواتير إلى الأستاذ، وصرف الصيدلية مع تحديث المخزون ذرياً، وحساب الإقامة، والإقفال السنوي. تستخدم مخطط SQL Server الحالي ومعاملات فعلية بدلاً من النتائج الوهمية؛ التفاصيل في [`backend/README.md`](backend/README.md).
 
-> الخدمة الخلفية مستقلة عن خادم TypeScript التجريبي الحالي. يلزم توجيه الواجهة إليها وإضافة مزود مصادقة موثوق قبل استخدامها إنتاجياً.
+واجهة WPF الرئيسية تتحقق دورياً من حياة خدمة API وتعرض حالة الاتصال الفعلية. شاشات الوحدات التفصيلية ما زالت نقاط تنقل غير مكتملة؛ راجع [`desktop/README.md`](desktop/README.md). يلزم إضافة مزود مصادقة موثوق وربط شاشات العمليات قبل الاستخدام الإنتاجي.
 
 ## متطلبات التشغيل
 
@@ -45,15 +41,16 @@
 3. للبناء والتشغيل من المصدر على Windows نفّذ:
 
    ```powershell
-   dotnet restore src/MEAAF.sln
-   dotnet build src/MEAAF.sln -c Release --no-restore
-   dotnet test src/MEAAF.sln -c Release --no-build
-   dotnet run --project src/MEAAF.UI/MEAAF.UI.csproj
+   dotnet restore MEAAF.sln
+   dotnet build MEAAF.sln -c Release --no-restore
+   dotnet run --project backend/MEAAF.Backend/MEAAF.Backend.csproj
+   # في نافذة أخرى:
+   dotnet run --project desktop/MEAAF.WPF/MEAAF.WPF.csproj
    ```
 
-   أو استخدم `Run_Professional_Build.bat`. هذه أوامر تطوير؛ لا يحتاج المستخدم النهائي إلى SDK عند تثبيت الحزمة self-contained.
+   هذه أوامر تطوير؛ راجع دليلي `backend` و`desktop` لإعداد متغيرات الاتصال.
 
-> `scripts/verify_structure.py` يتحقق من وجود الملفات، ومسارات الحل، وسلامة XML وبعض روابط الواجهة فقط؛ **لا يحل محل** `dotnet build` أو اختبار SQL Server.
+> لم يتوفر .NET SDK أو SQL Server في بيئة المراجعة الحالية؛ يلزم تنفيذ بناء الحل واختبارات التكامل على Windows قبل التوزيع.
 
 ## إعداد مفتاح توقيع الرخصة
 

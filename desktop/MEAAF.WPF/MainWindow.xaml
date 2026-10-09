@@ -1,0 +1,187 @@
+<Window x:Class="MEAAF.WPF.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="منظومة مِعاف | MEAAF - Victoria Line Soft"
+        Height="750" Width="1200" MinHeight="640" MinWidth="980"
+        WindowStartupLocation="CenterScreen"
+        FlowDirection="RightToLeft"
+        Background="{StaticResource PageBrush}">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="72"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="34"/>
+        </Grid.RowDefinitions>
+
+        <!-- رأس التطبيق -->
+        <Border Grid.Row="0" Background="{StaticResource NavyBrush}" Padding="24,10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="منظومة مِعاف الصحية والمحاسبية الذكية"
+                                   Foreground="{StaticResource GoldBrush}"
+                                   FontSize="20" FontWeight="Bold"/>
+                        <TextBlock Text="  |  MEAAF" Foreground="White"
+                                   FontSize="18" VerticalAlignment="Center"/>
+                    </StackPanel>
+                    <TextBlock Text="إدارة صحية ومحاسبية مترابطة"
+                               Foreground="#AAB6C2" FontSize="11" Margin="0,4,0,0"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Left">
+                    <TextBlock Text="العلامة الأم" Foreground="#A0AAB0" FontSize="11"/>
+                    <TextBlock Text="Victoria Line Soft" Foreground="#00E5FF"
+                               FontSize="14" FontWeight="Bold"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- وحدات النظام -->
+        <TabControl x:Name="MainTabs" Grid.Row="1" Margin="12" Background="White"
+                    BorderBrush="#D9E0E7" BorderThickness="1">
+            <TabItem Header="الفوترة والاستقبال">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <Grid Margin="24">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <TextBlock Text="نقطة الفوترة والاستقبال" FontSize="24" FontWeight="Bold"
+                                   Foreground="{StaticResource NavyBrush}"/>
+                        <TextBlock Grid.Row="1" Margin="0,6,0,20"
+                                   Text="إصدار الفواتير وتسجيل المدفوعات وترحيل القيود المحاسبية آلياً."
+                                   Foreground="#5C6873" FontSize="14"/>
+                        <UniformGrid Grid.Row="2" Columns="3" Rows="1">
+                            <Border Margin="0,0,0,0" Padding="20" Background="#EAF8FB" CornerRadius="8">
+                                <StackPanel>
+                                    <TextBlock Text="فاتورة جديدة" FontSize="17" FontWeight="Bold"/>
+                                    <TextBlock Text="إنشاء فاتورة وربطها بالمريض والخدمات." TextWrapping="Wrap"
+                                               Foreground="#5C6873" Margin="0,8,0,18"/>
+                                    <Button Content="بدء الفوترة" Tag="billing" Click="ModuleAction_Click"
+                                            HorizontalAlignment="Right"/>
+                                </StackPanel>
+                            </Border>
+                            <Border Margin="12,0" Padding="20" Background="#FFF8E1" CornerRadius="8">
+                                <StackPanel>
+                                    <TextBlock Text="المواعيد" FontSize="17" FontWeight="Bold"/>
+                                    <TextBlock Text="عرض حجوزات العيادات والاستقبال اليومية." TextWrapping="Wrap"
+                                               Foreground="#5C6873" Margin="0,8,0,18"/>
+                                    <Button Content="عرض المواعيد" Tag="appointments" Click="ModuleAction_Click"
+                                            HorizontalAlignment="Right"/>
+                                </StackPanel>
+                            </Border>
+                            <Border Padding="20" Background="#EEF7ED" CornerRadius="8">
+                                <StackPanel>
+                                    <TextBlock Text="بحث المرضى" FontSize="17" FontWeight="Bold"/>
+                                    <TextBlock Text="الوصول السريع إلى الملف الطبي والمالي." TextWrapping="Wrap"
+                                               Foreground="#5C6873" Margin="0,8,0,18"/>
+                                    <Button Content="فتح البحث" Tag="patients" Click="ModuleAction_Click"
+                                            HorizontalAlignment="Right"/>
+                                </StackPanel>
+                            </Border>
+                        </UniformGrid>
+                    </Grid>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem Header="دليل الحسابات والقيود">
+                <Grid Margin="24">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Text="دليل الحسابات والقيود اليومية" FontSize="24" FontWeight="Bold"
+                               Foreground="{StaticResource NavyBrush}"/>
+                    <TextBlock Grid.Row="1" Text="مراجعة شجرة الحسابات والقيود المرحلة والإقفال المالي."
+                               Foreground="#5C6873" Margin="0,6,0,20"/>
+                    <Border Grid.Row="2" BorderBrush="#D9E0E7" BorderThickness="1" CornerRadius="8" Padding="22">
+                        <StackPanel>
+                            <TextBlock Text="المحاسبة العامة" FontSize="18" FontWeight="Bold"/>
+                            <TextBlock Text="يتم تنفيذ العمليات المالية من خلال خدمة .NET وربطها بقاعدة MEAAF_DB."
+                                       TextWrapping="Wrap" Foreground="#5C6873" Margin="0,8,0,16"/>
+                            <WrapPanel>
+                                <Button Content="دليل الحسابات" Tag="accounts" Click="ModuleAction_Click" Margin="0,0,0,8"/>
+                                <Button Content="القيود اليومية" Tag="journal" Click="ModuleAction_Click" Margin="8,0,0,8"/>
+                                <Button Content="الإقفال السنوي" Tag="closing" Click="ModuleAction_Click" Margin="8,0,0,8"/>
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="الصيدلية والمخزون">
+                <Grid Margin="24">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Text="الصيدلية والمخزون" FontSize="24" FontWeight="Bold"
+                               Foreground="{StaticResource NavyBrush}"/>
+                    <TextBlock Grid.Row="1" Text="صرف الأدوية ومراقبة الرصيد وتسجيل تكلفة المبيعات آلياً."
+                               Foreground="#5C6873" Margin="0,6,0,20"/>
+                    <Border Grid.Row="2" Background="#F7FAFC" CornerRadius="8" Padding="22">
+                        <StackPanel>
+                            <TextBlock Text="عمليات الصيدلية" FontSize="18" FontWeight="Bold"/>
+                            <TextBlock Text="تتحقق عملية الصرف من الكمية المتاحة وتحدّث المخزون والقيد في معاملة واحدة."
+                                       TextWrapping="Wrap" Foreground="#5C6873" Margin="0,8,0,16"/>
+                            <WrapPanel>
+                                <Button Content="صرف دواء" Tag="dispense" Click="ModuleAction_Click" Margin="0,0,0,8"/>
+                                <Button Content="الأصناف والكميات" Tag="inventory" Click="ModuleAction_Click" Margin="8,0,0,8"/>
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="التنويم والأقسام السريرية">
+                <Grid Margin="24">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Text="التنويم والأقسام السريرية" FontSize="24" FontWeight="Bold"
+                               Foreground="{StaticResource NavyBrush}"/>
+                    <TextBlock Grid.Row="1" Text="إدارة الأقسام والأسرة وحساب أجور الإقامة والمغادرة."
+                               Foreground="#5C6873" Margin="0,6,0,20"/>
+                    <Border Grid.Row="2" Background="#F7FAFC" CornerRadius="8" Padding="22">
+                        <StackPanel>
+                            <TextBlock Text="إدارة الإقامة" FontSize="18" FontWeight="Bold"/>
+                            <TextBlock Text="احتساب مدة الإقامة وفق تاريخ الدخول والمغادرة وسعر القسم اليومي."
+                                       TextWrapping="Wrap" Foreground="#5C6873" Margin="0,8,0,16"/>
+                            <WrapPanel>
+                                <Button Content="تسجيل دخول" Tag="admission" Click="ModuleAction_Click" Margin="0,0,0,8"/>
+                                <Button Content="الأسرة والأقسام" Tag="beds" Click="ModuleAction_Click" Margin="8,0,0,8"/>
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </TabItem>
+        </TabControl>
+
+        <!-- شريط الحالة -->
+        <Border Grid.Row="2" Background="#E3E7EB" Padding="14,3">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Ellipse x:Name="ConnectionIndicator" Width="9" Height="9" Fill="#9CA3AF" Margin="0,0,0,0"/>
+                    <TextBlock x:Name="ConnectionStatusText" Text="جارٍ فحص الاتصال..."
+                               FontSize="11" Foreground="#333" Margin="7,0,0,0"/>
+                    <Button x:Name="RefreshConnectionButton" Content="تحديث" Click="RefreshConnection_Click"
+                            Margin="10,0,0,0" Padding="8,1" FontSize="10" Background="#64748B"/>
+                </StackPanel>
+                <TextBlock Grid.Column="1" Text="جميع الحقوق محفوظة © Victoria Line Soft 2026"
+                           FontSize="11" Foreground="#333" VerticalAlignment="Center"/>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>
