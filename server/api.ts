@@ -1,5 +1,10 @@
 import { Router, Response } from 'express';
 import bcrypt from 'bcryptjs';
+import { usersRouter } from './users';
+import { billingRouter } from './billing';
+import { accountingRouter } from './accounting';
+import { migrationRouter } from './migration';
+import { syncRouter } from './sync';
 import {
   db,
   PatientRecord,
@@ -19,6 +24,9 @@ import {
   createSession,
   revokeSession,
   logAudit,
+  requiresPasswordChange,
+  clearMustChangeForUser,
+  DEFAULT_SEED_PASSWORD,
 } from './auth';
 
 export const apiRouter = Router();
@@ -75,13 +83,15 @@ apiRouter.post('/auth/login', (req, res: Response) => {
   const role = raw.roles.find(r => r.id === user.roleId && r.tenantId === user.tenantId);
   const permissions = role?.permissions || [];
 
-  const token = createSession(user, permissions);
+  const mustChange = requiresPasswordChange(user);
+  const token = createSession(user, permissions, mustChange);
   logAudit(user.tenantId, user.id, 'Login', 'Core.Users', user.id, `تسجيل دخول ناجح للمستخدم: ${user.username}`);
 
   const tenant = raw.tenants.find(t => t.id === user.tenantId);
 
   res.json({
     token,
+    mustChangePassword: mustChange,
     user: {
       id: user.id,
       tenantId: user.tenantId,
@@ -139,7 +149,14 @@ apiRouter.post('/auth/change-password', authenticate, (req: AuthenticatedRequest
     return;
   }
 
-  user.passwordHash = bcrypt.hashSync(newPassword, bcrypt.genSaltSync(10));
+  if (newPassword === DEFAULT_SEED_PASSWORD) {
+    res.status(400).json({ error: 'لا يمكن استخدام كلمة المرور الافتراضية.' });
+    return;
+  }
+
+  user.passwordHash = bcrypt.hashSync(newPassword, bcrypt.genSaltSync(12));
+  user.mustChangePassword = false;
+  clearMustChangeForUser(user.id);
   db.save();
 
   logAudit(req.user!.tenantId, req.user!.userId, 'ChangePassword', 'Core.Users', user.id, 'تم تغيير كلمة المرور بنجاح للمستخدم');
@@ -234,248 +251,10 @@ apiRouter.post('/patients', authenticate, requirePermission('Patients', 'Create'
 });
 
 // ==========================================
-// 4. BILLING & INVOICES (مع المعاملات الذرية والقيد الآلي)
+// 4-5. BILLING & ACCOUNTING (see server/billing.ts and server/accounting.ts)
 // ==========================================
-apiRouter.get('/billing/invoices', authenticate, requirePermission('Billing', 'View'), (req: AuthenticatedRequest, res: Response) => {
-  const raw = db.getRawData();
-  const tenantId = req.user!.tenantId;
-  const invoices = raw.invoices.filter(i => i.tenantId === tenantId);
-  res.json(invoices);
-});
-
-apiRouter.post('/billing/invoices', authenticate, requirePermission('Billing', 'Create'), (req: AuthenticatedRequest, res: Response) => {
-  const { patientId, description, quantity, unitPrice, discount } = req.body;
-
-  if (!patientId || !description || quantity === undefined || unitPrice === undefined) {
-    res.status(400).json({ error: 'جميع بيانات الفاتورة ومحدد المريض مطلوبة.' });
-    return;
-  }
-
-  const qty = Number(quantity);
-  const price = Number(unitPrice);
-  const disc = Number(discount || 0);
-
-  if (qty <= 0 || price < 0 || disc < 0) {
-    res.status(400).json({ error: 'الكمية والأسعار يجب أن تكون قيماً عددية موجبة صالحة.' });
-    return;
-  }
-
-  const raw = db.getRawData();
-  const tenantId = req.user!.tenantId;
-
-  // Strict tenant patient ownership check
-  const patient = raw.patients.find(p => p.id === patientId && p.tenantId === tenantId && !p.isDeleted);
-  if (!patient) {
-    res.status(404).json({ error: 'المريض المحدد غير موجود أو لا ينتمي إلى هذه المنشأة.' });
-    return;
-  }
-
-  // Exact fixed decimal calculations in cents
-  const subtotalCents = Math.round(qty * price * 100);
-  const discountCents = Math.round(disc * 100);
-  if (discountCents > subtotalCents) {
-    res.status(400).json({ error: 'قيمة الخصم لا يمكن أن تتجاوز المجموع الفرعي.' });
-    return;
-  }
-
-  const netCents = subtotalCents - discountCents;
-  const taxCents = Math.round(netCents * 0.15); // 15% VAT
-  const totalCents = netCents + taxCents;
-
-  const invoiceNo = `INV-${new Date().getFullYear()}-${String(raw.invoices.length + 1).padStart(4, '0')}`;
-  const invoiceId = 'inv-' + Date.now();
-  const journalEntryId = 'je-' + Date.now();
-  const entryNo = `JV-${new Date().getFullYear()}-${String(raw.journalEntries.length + 1).padStart(3, '0')}`;
-
-  // Execute in ACID transaction
-  db.beginTransaction();
-  try {
-    const draftJournal: JournalEntryRecord = {
-      id: journalEntryId,
-      tenantId,
-      branchId: patient.branchId,
-      entryNo,
-      entryDate: new Date().toISOString().slice(0, 10),
-      description: `قيد مسودة آلي للفاتورة ${invoiceNo} - ${patient.fullName}`,
-      isApproved: false, // In MEAAF: generated as Draft requiring approval
-      createdAt: new Date().toISOString(),
-      lines: [
-        {
-          id: 'jl-' + Date.now() + '-1',
-          journalEntryId,
-          lineNo: 1,
-          accountCode: '1000',
-          accountName: 'الصندوق والبنك',
-          debitCents: totalCents,
-          creditCents: 0,
-        },
-        {
-          id: 'jl-' + Date.now() + '-2',
-          journalEntryId,
-          lineNo: 2,
-          accountCode: '4000',
-          accountName: 'إيرادات الخدمات الطبية',
-          debitCents: 0,
-          creditCents: totalCents,
-        },
-      ],
-    };
-
-    const invoice: InvoiceRecord = {
-      id: invoiceId,
-      tenantId,
-      branchId: patient.branchId,
-      patientId: patient.id,
-      patientName: patient.fullName,
-      invoiceNo,
-      invoiceDate: new Date().toISOString().slice(0, 10),
-      subtotalCents,
-      discountCents,
-      taxCents,
-      totalCents,
-      status: 'Posted',
-      lines: [
-        {
-          id: 'line-' + Date.now(),
-          invoiceId,
-          description: description.trim(),
-          quantity: qty,
-          unitPriceCents: Math.round(price * 100),
-          totalCents: subtotalCents,
-        },
-      ],
-      journalEntryId,
-      createdAt: new Date().toISOString(),
-    };
-
-    raw.journalEntries.unshift(draftJournal);
-    raw.invoices.unshift(invoice);
-
-    logAudit(tenantId, req.user!.userId, 'Create', 'Billing.Invoices', invoice.id, `إصدار فاتورة ${invoiceNo} بقيمة ${(totalCents / 100).toFixed(2)} ر.س`);
-    logAudit(tenantId, req.user!.userId, 'AutoDraft', 'Accounting.JournalEntries', journalEntryId, `توليد قيد مسودة ${entryNo} للفاتورة ${invoiceNo}`);
-
-    db.commit();
-
-    res.status(201).json({
-      invoice,
-      draftJournal,
-      message: `تم إصدار الفاتورة ${invoiceNo} بنجاح وقيد مسودة مرافق ${entryNo}.`,
-    });
-  } catch (err: any) {
-    db.rollback();
-    res.status(500).json({ error: `فشل ذري أثناء إنشاء الفاتورة: ${err.message}` });
-  }
-});
-
-// ==========================================
-// 5. ACCOUNTING & JOURNAL ENTRIES (توازن صارم)
-// ==========================================
-apiRouter.get('/accounting/journal-entries', authenticate, requirePermission('Accounting', 'View'), (req: AuthenticatedRequest, res: Response) => {
-  const raw = db.getRawData();
-  const tenantId = req.user!.tenantId;
-  const entries = raw.journalEntries.filter(j => j.tenantId === tenantId);
-  res.json(entries);
-});
-
-apiRouter.post('/accounting/journal-entries', authenticate, requirePermission('Accounting', 'Create'), (req: AuthenticatedRequest, res: Response) => {
-  const { description, entryDate, lines } = req.body;
-
-  if (!description?.trim() || !Array.isArray(lines) || lines.length < 2) {
-    res.status(400).json({ error: 'بيان القيد مطلوب، ويجب أن يحتوي القيد على طرفين على الأقل.' });
-    return;
-  }
-
-  let totalDebitCents = 0;
-  let totalCreditCents = 0;
-
-  for (const l of lines) {
-    const debitCents = Math.round(Number(l.debit || 0) * 100);
-    const creditCents = Math.round(Number(l.credit || 0) * 100);
-
-    if (debitCents < 0 || creditCents < 0) {
-      res.status(400).json({ error: 'المبالغ في أسطر القيد لا يمكن أن تكون سالبة.' });
-      return;
-    }
-    if (debitCents > 0 && creditCents > 0) {
-      res.status(400).json({ error: 'السطر الواحد لا يمكن أن يجمع بين مدين ودائن في نفس الوقت.' });
-      return;
-    }
-
-    totalDebitCents += debitCents;
-    totalCreditCents += creditCents;
-  }
-
-  // Exact accounting invariant check
-  if (totalDebitCents !== totalCreditCents) {
-    res.status(400).json({
-      error: `القيد غير متوازن مالياً! إجمالي المدين (${(totalDebitCents / 100).toFixed(2)}) لا يساوي إجمالي الدائن (${(totalCreditCents / 100).toFixed(2)}).`,
-    });
-    return;
-  }
-
-  const raw = db.getRawData();
-  const tenantId = req.user!.tenantId;
-  const entryNo = `JV-${new Date().getFullYear()}-${String(raw.journalEntries.length + 1).padStart(3, '0')}`;
-  const id = 'je-' + Date.now();
-
-  const entry: JournalEntryRecord = {
-    id,
-    tenantId,
-    entryNo,
-    entryDate: entryDate || new Date().toISOString().slice(0, 10),
-    description: description.trim(),
-    isApproved: false, // Draft initially
-    createdAt: new Date().toISOString(),
-    lines: lines.map((l: any, idx: number) => ({
-      id: 'jl-' + Date.now() + '-' + idx,
-      journalEntryId: id,
-      lineNo: idx + 1,
-      accountCode: l.accountCode || '1000',
-      accountName: l.accountName || 'حساب',
-      debitCents: Math.round(Number(l.debit || 0) * 100),
-      creditCents: Math.round(Number(l.credit || 0) * 100),
-    })),
-  };
-
-  raw.journalEntries.unshift(entry);
-  db.save();
-
-  logAudit(tenantId, req.user!.userId, 'PostDraft', 'Accounting.JournalEntries', id, `حفظ قيد مسودة ${entryNo} بقيمة ${(totalDebitCents / 100).toFixed(2)} ر.س`);
-  res.status(201).json(entry);
-});
-
-apiRouter.post('/accounting/journal-entries/:id/approve', authenticate, requirePermission('Accounting', 'Approve'), (req: AuthenticatedRequest, res: Response) => {
-  const { id } = req.params;
-  const raw = db.getRawData();
-  const tenantId = req.user!.tenantId;
-
-  const entry = raw.journalEntries.find(j => j.id === id && j.tenantId === tenantId);
-  if (!entry) {
-    res.status(404).json({ error: 'القيد المحاسبي غير موجود.' });
-    return;
-  }
-
-  if (entry.isApproved) {
-    res.status(400).json({ error: 'القيد معتمد مسبقاً.' });
-    return;
-  }
-
-  // Double check balance before approval
-  const totalDebit = entry.lines.reduce((s, l) => s + l.debitCents, 0);
-  const totalCredit = entry.lines.reduce((s, l) => s + l.creditCents, 0);
-  if (totalDebit !== totalCredit) {
-    res.status(400).json({ error: 'لا يمكن اعتماد قيد غير متوازن.' });
-    return;
-  }
-
-  entry.isApproved = true;
-  entry.approvedAt = new Date().toISOString();
-  entry.approvedBy = req.user!.userId;
-  db.save();
-
-  logAudit(tenantId, req.user!.userId, 'Approve', 'Accounting.JournalEntries', id, `اعتماد رسمي للقيد المحاسبي ${entry.entryNo}`);
-  res.json({ success: true, entry });
-});
+apiRouter.use(billingRouter);
+apiRouter.use(accountingRouter);
 
 // ==========================================
 // 6. INVENTORY & STOCK
@@ -548,7 +327,7 @@ apiRouter.post('/inventory/products/:id/stock', authenticate, requirePermission(
   product.stock += qty;
   db.save();
 
-  logAudit(tenantId, req.user!.userId, 'AddStock', 'Inventory.Products', id, `توريد كمية ${qty} ${product.unit} للمنتج ${product.name}. الرصيد: ${product.stock}`);
+  logAudit(tenantId, req.user!.userId, 'AddStock', 'Inventory.Products', String(id), `توريد كمية ${qty} ${product.unit} للمنتج ${product.name}. الرصيد: ${product.stock}`);
   res.json({ success: true, product });
 });
 
@@ -562,10 +341,10 @@ apiRouter.get('/reports/dashboard', authenticate, requirePermission('Reports', '
   // 1. Patients where TenantId = tenant AND isDeleted = false
   const patientsCount = raw.patients.filter(p => p.tenantId === tenantId && !p.isDeleted).length;
 
-  // 2. Sum(Total) from Invoices where Status = 'Posted'
+  // 2. Net revenue (after discounts, excluding VAT) from invoices where Status = 'Posted'
   const revenueCents = raw.invoices
     .filter(i => i.tenantId === tenantId && i.status === 'Posted')
-    .reduce((s, i) => s + i.totalCents, 0);
+    .reduce((s, i) => s + (i.subtotalCents - i.discountCents), 0);
 
   // 3 & 4. Sum(Debit) & Sum(Credit) from approved journal entries ONLY
   let debitCents = 0;
@@ -587,92 +366,10 @@ apiRouter.get('/reports/dashboard', authenticate, requirePermission('Reports', '
 });
 
 // ==========================================
-// 8. DATA MIGRATION & RECONCILIATION
+// 8. DATA MIGRATION & OFFLINE SYNC (see server/migration.ts and server/sync.ts)
 // ==========================================
-apiRouter.post('/migration/discover', authenticate, requirePermission('Migration', 'Create'), (req: AuthenticatedRequest, res: Response) => {
-  const { sourceName } = req.body;
-  const raw = db.getRawData();
-  const tenantId = req.user!.tenantId;
-
-  const jobId = 'mig-' + Date.now();
-  const job: MigrationJobRecord = {
-    id: jobId,
-    tenantId,
-    sourceName: sourceName || 'SQLServer Legacy Clinic',
-    sourceType: 'SQLServer',
-    status: 'Discovered',
-    totalSourceRows: 5,
-    validRows: 0,
-    invalidRows: 0,
-    importedRows: 0,
-    createdAt: new Date().toISOString(),
-  };
-
-  raw.migrationJobs.unshift(job);
-  db.save();
-
-  logAudit(tenantId, req.user!.userId, 'Discover', 'Migration.Jobs', jobId, `اكتشاف جداول مصدر الترحيل: ${job.sourceName}`);
-
-  res.json({
-    job,
-    tables: ['LegacyPatients', 'PatientArchive', 'ClinicClients'],
-  });
-});
-
-apiRouter.post('/migration/commit', authenticate, requirePermission('Migration', 'Commit'), (req: AuthenticatedRequest, res: Response) => {
-  const { jobId, patients } = req.body;
-  if (!Array.isArray(patients) || patients.length === 0) {
-    res.status(400).json({ error: 'قائمة المرضى المراد استيرادهم فارغة.' });
-    return;
-  }
-
-  const raw = db.getRawData();
-  const tenantId = req.user!.tenantId;
-
-  const job = raw.migrationJobs.find(j => j.id === jobId && j.tenantId === tenantId);
-
-  db.beginTransaction();
-  try {
-    let importedCount = 0;
-    const existingMedNos = new Set(raw.patients.filter(p => p.tenantId === tenantId && !p.isDeleted).map(p => p.medicalNo.toLowerCase()));
-
-    for (const p of patients) {
-      if (!p.medicalNo || !p.fullName) continue;
-      if (existingMedNos.has(p.medicalNo.toLowerCase())) continue;
-
-      const newPatient: PatientRecord = {
-        id: 'pat-mig-' + Date.now() + '-' + importedCount,
-        tenantId,
-        medicalNo: p.medicalNo.trim(),
-        fullName: p.fullName.trim(),
-        phone: p.phone || '',
-        birthDate: p.birthDate,
-        gender: p.gender || 'غير محدد',
-        address: p.address || '',
-        isDeleted: false,
-        createdAt: new Date().toISOString(),
-      };
-
-      raw.patients.unshift(newPatient);
-      existingMedNos.add(newPatient.medicalNo.toLowerCase());
-      importedCount++;
-    }
-
-    if (job) {
-      job.status = 'Committed';
-      job.importedRows = importedCount;
-      job.reconciliationStatus = 'Matched';
-    }
-
-    logAudit(tenantId, req.user!.userId, 'Commit', 'Migration.Patients', jobId, `ترحيل ذري ناجح لـ ${importedCount} مريض ومطابقة Reconciliation`);
-
-    db.commit();
-    res.json({ success: true, importedCount, reconciliation: 'Matched' });
-  } catch (err: any) {
-    db.rollback();
-    res.status(500).json({ error: `فشل الترحيل: ${err.message}` });
-  }
-});
+apiRouter.use(migrationRouter);
+apiRouter.use(syncRouter);
 
 // ==========================================
 // 9. HEALTH CENTER (فحوصات صحة حقيقية)
@@ -809,6 +506,11 @@ apiRouter.get('/backup/export', authenticate, requirePermission('Backup', 'Creat
 });
 
 apiRouter.post('/backup/reset', authenticate, requirePermission('Backup', 'Restore'), (req: AuthenticatedRequest, res: Response) => {
+  // Factory reset is a destructive, dev-only operation and must be explicitly enabled.
+  if (process.env.NODE_ENV === 'production' || process.env.MEAAF_ALLOW_FACTORY_RESET !== 'true') {
+    res.status(403).json({ error: 'إعادة الضبط إلى البيانات التأسيسية معطلة في هذه البيئة.' });
+    return;
+  }
   db.seedDefaultData();
   logAudit('tenant-001', req.user?.userId, 'FactoryReset', 'Core.System', undefined, 'إعادة ضبط المنظومة للبيانات التأسيسية المعتمدة');
   res.json({ success: true, message: 'تمت إعادة الضبط للبيانات التأسيسية.' });
@@ -819,3 +521,6 @@ apiRouter.get('/audit', authenticate, (req: AuthenticatedRequest, res: Response)
   const tenantId = req.user!.tenantId;
   res.json(raw.auditLogs.filter(a => a.tenantId === tenantId));
 });
+
+// User & role administration (see server/users.ts)
+apiRouter.use(usersRouter);

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Api, setAuthToken } from './services/api';
 import { Header } from './components/Header';
+import { SyncStatus } from './components/SyncStatus';
 import { Sidebar, NavTab } from './components/Sidebar';
 import { ChangePasswordModal } from './components/Dialogs/ChangePasswordModal';
 import { LoginView } from './views/LoginView';
@@ -17,6 +18,7 @@ import { HealthCenterView } from './views/HealthCenterView';
 import { ControlCenterView } from './views/ControlCenterView';
 import { DevicesView } from './views/DevicesView';
 import { SupportView } from './views/SupportView';
+import { UsersView } from './views/UsersView';
 
 export const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<any | null>(null);
@@ -88,6 +90,8 @@ export const App: React.FC = () => {
         onLogout={handleLogout}
       />
 
+      <SyncStatus />
+
       {/* Main Layout */}
       <div className="flex flex-1 overflow-hidden">
         {/* Navigation Sidebar */}
@@ -108,13 +112,22 @@ export const App: React.FC = () => {
           {currentTab === 'support' && <SupportView />}
           {currentTab === 'backup' && <BackupView />}
           {currentTab === 'audit' && <AuditView />}
+          {currentTab === 'users' && <UsersView currentUserId={currentUser.userId ?? currentUser.id} />}
         </main>
       </div>
 
       {/* Change Password Dialog */}
       <ChangePasswordModal
-        isOpen={isPasswordModalOpen}
-        onClose={() => setIsPasswordModalOpen(false)}
+        isOpen={isPasswordModalOpen || !!currentUser.mustChangePassword}
+        forced={!!currentUser.mustChangePassword}
+        onClose={() => {
+          setIsPasswordModalOpen(false);
+          if (currentUser.mustChangePassword) {
+            // Views loaded while the password change was pending were refused (403) and would stay
+            // empty. Reload so every view fetches its data with the now-unrestricted session.
+            window.location.reload();
+          }
+        }}
       />
     </div>
   );

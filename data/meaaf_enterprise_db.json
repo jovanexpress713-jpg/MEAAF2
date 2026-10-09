@@ -149,8 +149,8 @@
       "username": "admin_tenantB",
       "displayName": "مدير منشأة الشفاء (Tenant B)",
       "passwordHash": "$2b$10$ubj2Jpf2c0Dqn1JIzIlQCufT7MjNbWfOHTMXZTNSJQk794C3puacG",
-      "roleId": "role-admin",
-      "roleName": "مدير المنشأة B",
+      "roleId": "role-admin-tenant-002",
+      "roleName": "مدير النظام الكامل (Enterprise Admin)",
       "isActive": true,
       "isDeleted": false,
       "failedLoginAttempts": 0,
@@ -190,7 +190,11 @@
         "Control:Configure",
         "Health:View",
         "Support:View",
-        "Support:Create"
+        "Support:Create",
+        "Users:View",
+        "Users:Create",
+        "Users:Edit",
+        "Users:ResetPassword"
       ]
     },
     {
@@ -217,6 +221,45 @@
         "Reports:View",
         "Reports:Export"
       ]
+    },
+    {
+      "id": "role-admin-tenant-002",
+      "tenantId": "tenant-002",
+      "name": "مدير النظام الكامل (Enterprise Admin)",
+      "permissions": [
+        "Patients:View",
+        "Patients:Create",
+        "Patients:Edit",
+        "Patients:Delete",
+        "Billing:View",
+        "Billing:Create",
+        "Billing:Approve",
+        "Accounting:View",
+        "Accounting:Create",
+        "Accounting:Approve",
+        "Inventory:View",
+        "Inventory:Create",
+        "Inventory:Edit",
+        "Reports:View",
+        "Reports:Export",
+        "Migration:View",
+        "Migration:Create",
+        "Migration:Commit",
+        "Backup:View",
+        "Backup:Create",
+        "Backup:Restore",
+        "Devices:View",
+        "Devices:Configure",
+        "Control:View",
+        "Control:Configure",
+        "Health:View",
+        "Support:View",
+        "Support:Create",
+        "Users:View",
+        "Users:Create",
+        "Users:Edit",
+        "Users:ResetPassword"
+      ]
     }
   ],
   "patients": [
@@ -231,7 +274,8 @@
       "gender": "ذكر",
       "address": "الرياض - حي الملز",
       "isDeleted": false,
-      "createdAt": "2026-01-10T10:00:00Z"
+      "createdAt": "2026-01-10T10:00:00Z",
+      "syncSeq": 1
     },
     {
       "id": "pat-1002",
@@ -244,7 +288,8 @@
       "gender": "أنثى",
       "address": "جدة - حي الروضة",
       "isDeleted": false,
-      "createdAt": "2026-01-12T14:30:00Z"
+      "createdAt": "2026-01-12T14:30:00Z",
+      "syncSeq": 2
     },
     {
       "id": "pat-tenantB-01",
@@ -254,7 +299,8 @@
       "phone": "0599999999",
       "gender": "ذكر",
       "isDeleted": false,
-      "createdAt": "2026-01-15T09:00:00Z"
+      "createdAt": "2026-01-15T09:00:00Z",
+      "syncSeq": 3
     }
   ],
   "products": [
@@ -415,5 +461,155 @@
       "createdAt": "2026-01-16T12:00:00Z"
     }
   ],
-  "migrationJobs": []
+  "migrationJobs": [],
+  "accounts": [
+    {
+      "id": "acc-tenant-001-1000",
+      "tenantId": "tenant-001",
+      "code": "1000",
+      "name": "الصندوق والبنك",
+      "type": "Asset",
+      "isActive": true,
+      "createdAt": "2026-10-08T18:11:13.322Z"
+    },
+    {
+      "id": "acc-tenant-001-1100",
+      "tenantId": "tenant-001",
+      "code": "1100",
+      "name": "ذمم المرضى المدينة",
+      "type": "Asset",
+      "isActive": true,
+      "createdAt": "2026-10-08T18:11:13.322Z"
+    },
+    {
+      "id": "acc-tenant-001-1200",
+      "tenantId": "tenant-001",
+      "code": "1200",
+      "name": "المخزون",
+      "type": "Asset",
+      "isActive": true,
+      "createdAt": "2026-10-08T18:11:13.322Z"
+    },
+    {
+      "id": "acc-tenant-001-2100",
+      "tenantId": "tenant-001",
+      "code": "2100",
+      "name": "ضريبة القيمة المضافة المستحقة",
+      "type": "Liability",
+      "isActive": true,
+      "createdAt": "2026-10-08T18:11:13.322Z"
+    },
+    {
+      "id": "acc-tenant-001-3000",
+      "tenantId": "tenant-001",
+      "code": "3000",
+      "name": "رأس المال",
+      "type": "Equity",
+      "isActive": true,
+      "createdAt": "2026-10-08T18:11:13.322Z"
+    },
+    {
+      "id": "acc-tenant-001-4000",
+      "tenantId": "tenant-001",
+      "code": "4000",
+      "name": "إيرادات الخدمات الطبية",
+      "type": "Revenue",
+      "isActive": true,
+      "createdAt": "2026-10-08T18:11:13.322Z"
+    },
+    {
+      "id": "acc-tenant-001-5000",
+      "tenantId": "tenant-001",
+      "code": "5000",
+      "name": "تكلفة المبيعات",
+      "type": "Expense",
+      "isActive": true,
+      "createdAt": "2026-10-08T18:11:13.322Z"
+    },
+    {
+      "id": "acc-tenant-001-6000",
+      "tenantId": "tenant-001",
+      "code": "6000",
+      "name": "مصروفات تشغيلية",
+      "type": "Expense",
+      "isActive": true,
+      "createdAt": "2026-10-08T18:11:13.323Z"
+    },
+    {
+      "id": "acc-tenant-002-1000",
+      "tenantId": "tenant-002",
+      "code": "1000",
+      "name": "الصندوق والبنك",
+      "type": "Asset",
+      "isActive": true,
+      "createdAt": "2026-10-08T18:11:13.323Z"
+    },
+    {
+      "id": "acc-tenant-002-1100",
+      "tenantId": "tenant-002",
+      "code": "1100",
+      "name": "ذمم المرضى المدينة",
+      "type": "Asset",
+      "isActive": true,
+      "createdAt": "2026-10-08T18:11:13.323Z"
+    },
+    {
+      "id": "acc-tenant-002-1200",
+      "tenantId": "tenant-002",
+      "code": "1200",
+      "name": "المخزون",
+      "type": "Asset",
+      "isActive": true,
+      "createdAt": "2026-10-08T18:11:13.323Z"
+    },
+    {
+      "id": "acc-tenant-002-2100",
+      "tenantId": "tenant-002",
+      "code": "2100",
+      "name": "ضريبة القيمة المضافة المستحقة",
+      "type": "Liability",
+      "isActive": true,
+      "createdAt": "2026-10-08T18:11:13.323Z"
+    },
+    {
+      "id": "acc-tenant-002-3000",
+      "tenantId": "tenant-002",
+      "code": "3000",
+      "name": "رأس المال",
+      "type": "Equity",
+      "isActive": true,
+      "createdAt": "2026-10-08T18:11:13.323Z"
+    },
+    {
+      "id": "acc-tenant-002-4000",
+      "tenantId": "tenant-002",
+      "code": "4000",
+      "name": "إيرادات الخدمات الطبية",
+      "type": "Revenue",
+      "isActive": true,
+      "createdAt": "2026-10-08T18:11:13.323Z"
+    },
+    {
+      "id": "acc-tenant-002-5000",
+      "tenantId": "tenant-002",
+      "code": "5000",
+      "name": "تكلفة المبيعات",
+      "type": "Expense",
+      "isActive": true,
+      "createdAt": "2026-10-08T18:11:13.323Z"
+    },
+    {
+      "id": "acc-tenant-002-6000",
+      "tenantId": "tenant-002",
+      "code": "6000",
+      "name": "مصروفات تشغيلية",
+      "type": "Expense",
+      "isActive": true,
+      "createdAt": "2026-10-08T18:11:13.323Z"
+    }
+  ],
+  "accountingPeriods": [],
+  "payments": [],
+  "syncOperations": [],
+  "syncCursor": 3
 }

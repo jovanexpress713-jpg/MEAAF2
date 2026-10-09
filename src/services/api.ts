@@ -38,6 +38,61 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 }
 
 export const Api = {
+  // Migration (file-based import)
+  getMigrationEntities: () => request<any[]>('/migration/entities'),
+  getMigrationJobs: () => request<any[]>('/migration/jobs'),
+  stageMigration: (data: { entity: string; rows: Record<string, unknown>[]; sourceName: string; sourceType: 'CSV' | 'JSON' }) =>
+    request<any>('/migration/jobs', { method: 'POST', body: JSON.stringify(data) }),
+  commitMigration: (id: string) => request<any>(`/migration/jobs/${encodeURIComponent(id)}/commit`, { method: 'POST' }),
+  discardMigration: (id: string) => request<any>(`/migration/jobs/${encodeURIComponent(id)}/discard`, { method: 'POST' }),
+
+  // Offline sync
+  syncPush: (deviceId: string, operations: Array<{ opId: string; type: string; payload: unknown }>) =>
+    request<{ results: Array<{ opId: string; status: string; message: string; resultId?: string }>; cursor: number }>(
+      '/sync/push',
+      { method: 'POST', body: JSON.stringify({ deviceId, operations }) }
+    ),
+  syncPull: (since: number) => request<{ patients: any[]; cursor: number; hasMore: boolean }>(`/sync/pull?since=${since}`),
+
+  // Billing actions
+  getInvoicePayments: (id: string) => request<{ invoice: any; movements: any[] }>(`/billing/invoices/${encodeURIComponent(id)}/payments`),
+  payInvoice: (id: string, data: { amount: number; method: string; reference?: string }) =>
+    request<any>(`/billing/invoices/${encodeURIComponent(id)}/payments`, { method: 'POST', body: JSON.stringify(data) }),
+  refundInvoice: (id: string, data: { amount: number; reason: string }) =>
+    request<any>(`/billing/invoices/${encodeURIComponent(id)}/refunds`, { method: 'POST', body: JSON.stringify(data) }),
+  cancelInvoice: (id: string, data: { reason: string }) =>
+    request<any>(`/billing/invoices/${encodeURIComponent(id)}/cancel`, { method: 'POST', body: JSON.stringify(data) }),
+
+  // Accounting administration
+  getAccounts: () => request<any[]>('/accounting/accounts'),
+  createAccount: (data: { code: string; name: string; type: string }) =>
+    request<any>('/accounting/accounts', { method: 'POST', body: JSON.stringify(data) }),
+  updateAccount: (code: string, data: { name?: string; isActive?: boolean }) =>
+    request<any>(`/accounting/accounts/${encodeURIComponent(code)}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  getPeriods: () => request<any[]>('/accounting/periods'),
+  closePeriod: (period: string) => request<any>(`/accounting/periods/${period}/close`, { method: 'POST' }),
+  reopenPeriod: (period: string, reason: string) =>
+    request<any>(`/accounting/periods/${period}/reopen`, { method: 'POST', body: JSON.stringify({ reason }) }),
+  getTrialBalance: (asOf?: string) =>
+    request<any>(`/accounting/trial-balance${asOf ? `?asOf=${encodeURIComponent(asOf)}` : ''}`),
+  // Users & roles
+  getUsers: () => request<any[]>('/users'),
+  createUser: (data: { username: string; displayName: string; roleId: string }) =>
+    request<{ user: any; temporaryPassword: string }>('/users', { method: 'POST', body: JSON.stringify(data) }),
+  updateUser: (id: string, data: { displayName?: string; roleId?: string; isActive?: boolean }) =>
+    request<{ user: any }>(`/users/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  resetUserPassword: (id: string) =>
+    request<{ user: any; temporaryPassword: string }>(`/users/${encodeURIComponent(id)}/reset-password`, { method: 'POST' }),
+  unlockUser: (id: string) =>
+    request<{ user: any }>(`/users/${encodeURIComponent(id)}/unlock`, { method: 'POST' }),
+  getRoles: () => request<{ roles: any[]; catalog: Record<string, string[]> }>('/roles'),
+  createRole: (data: { name: string; permissions: string[] }) =>
+    request<{ role: any }>('/roles', { method: 'POST', body: JSON.stringify(data) }),
+  updateRole: (id: string, data: { name?: string; permissions?: string[] }) =>
+    request<{ role: any }>(`/roles/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  deleteRole: (id: string) =>
+    request<{ success: boolean }>(`/roles/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
   // Auth
   login: (username: string, password: string) =>
     request<{ token: string; user: any; tenant: any }>('/auth/login', {
@@ -133,18 +188,6 @@ export const Api = {
     }),
 
   // Migration
-  discoverMigration: (sourceName?: string) =>
-    request<any>('/migration/discover', {
-      method: 'POST',
-      body: JSON.stringify({ sourceName }),
-    }),
-
-  commitMigration: (jobId: string, patients: any[]) =>
-    request<any>('/migration/commit', {
-      method: 'POST',
-      body: JSON.stringify({ jobId, patients }),
-    }),
-
   // Backup & Audit
   exportBackup: () => request<any>('/backup/export'),
 

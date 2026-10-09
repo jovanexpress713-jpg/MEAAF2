@@ -1,6 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 import bcrypt from 'bcryptjs';
+import { ALL_PERMISSIONS } from './permissions';
+import { DEFAULT_CHART } from './chart';
 
 const DATA_DIR = path.resolve(process.cwd(), 'data');
 const DB_FILE = path.join(DATA_DIR, 'meaaf_enterprise_db.json');
@@ -77,6 +79,7 @@ export interface UserRecord {
   isDeleted: boolean;
   failedLoginAttempts: number;
   lockedUntil?: string;
+  mustChangePassword?: boolean;
   createdAt: string;
 }
 
@@ -99,6 +102,7 @@ export interface PatientRecord {
   address?: string;
   isDeleted: boolean;
   createdAt: string;
+  syncSeq?: number; // monotonically increasing change sequence for offline pull
 }
 
 export interface ProductRecord {
@@ -136,6 +140,9 @@ export interface InvoiceRecord {
   taxCents: number;
   totalCents: number;
   status: 'Posted' | 'Cancelled';
+  cancelledAt?: string;
+  cancelledBy?: string;
+  cancelReason?: string;
   lines: InvoiceLineRecord[];
   journalEntryId: string;
   createdAt: string;
@@ -163,6 +170,42 @@ export interface JournalEntryRecord {
   approvedBy?: string;
   createdAt: string;
   lines: JournalLineRecord[];
+}
+
+export interface AccountRecord {
+  id: string;
+  tenantId: string;
+  code: string;
+  name: string;
+  type: 'Asset' | 'Liability' | 'Equity' | 'Revenue' | 'Expense';
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface AccountingPeriodRecord {
+  id: string;
+  tenantId: string;
+  period: string; // YYYY-MM
+  status: 'Open' | 'Closed';
+  closedAt?: string;
+  closedBy?: string;
+  reopenReason?: string;
+}
+
+// Money movement against an invoice. Refunds are stored as separate records (never edited).
+export interface PaymentRecord {
+  id: string;
+  tenantId: string;
+  invoiceId: string;
+  kind: 'Payment' | 'Refund';
+  amountCents: number;
+  method: string;
+  reference?: string;
+  reason?: string;
+  journalEntryId: string;
+  entryDate: string;
+  createdBy: string;
+  createdAt: string;
 }
 
 export interface AuditRecord {
@@ -205,13 +248,31 @@ export interface MigrationJobRecord {
   id: string;
   tenantId: string;
   sourceName: string;
-  sourceType: 'SQLServer' | 'CSV' | 'Access';
-  status: 'Discovered' | 'Staged' | 'Validated' | 'Committed' | 'Failed';
-  totalSourceRows: number;
+  sourceType: 'CSV' | 'JSON';
+  entity: 'patients' | 'accounts' | 'products' | 'invoices' | 'journal_entries';
+  status: 'Staged' | 'Validated' | 'Committed' | 'Rejected';
+  totalRows: number;
   validRows: number;
+  duplicateRows: number;
   invalidRows: number;
   importedRows: number;
-  reconciliationStatus?: 'Matched' | 'Discrepancy';
+  errors: Array<{ row: number; field?: string; message: string }>;
+  // Normalized rows awaiting commit. Cleared once the import succeeds.
+  stagedRows: any[];
+  sourceChecksum: string;
+  createdBy: string;
+  createdAt: string;
+  committedAt?: string;
+}
+
+export interface SyncOperationRecord {
+  id: string; // client-generated operation id (idempotency key)
+  tenantId: string;
+  deviceId: string;
+  type: string;
+  status: 'applied' | 'conflict' | 'rejected';
+  message: string;
+  resultId?: string;
   createdAt: string;
 }
 
@@ -228,6 +289,11 @@ export interface DatabaseSchema {
   products: ProductRecord[];
   invoices: InvoiceRecord[];
   journalEntries: JournalEntryRecord[];
+  accounts: AccountRecord[];
+  accountingPeriods: AccountingPeriodRecord[];
+  payments: PaymentRecord[];
+  syncOperations: SyncOperationRecord[];
+  syncCursor: number;
   auditLogs: AuditRecord[];
   licenses: LicenseRecord[];
   supportTickets: SupportTicketRecord[];
@@ -256,12 +322,96 @@ export class EnterpriseDatabase {
       try {
         const raw = fs.readFileSync(DB_FILE, 'utf-8');
         dbData = JSON.parse(raw);
+        this.repairRbac();
         return;
       } catch (err) {
         console.error('Failed to parse DB_FILE, seeding fresh database...', err);
       }
     }
     this.seedDefaultData();
+    this.repairRbac();
+  }
+
+  // Idempotent repair of role data:
+  //  - every tenant has its own full-admin role (tenant isolation: no cross-tenant role references);
+  //  - admin roles carry every catalog permission (picks up newly added permissions);
+  //  - users reference a role that exists in their own tenant, and cached role names match.
+  private repairRbac(): void {
+    const d = dbData;
+    let changed = false;
+
+    // Collections added after the first release may be missing from older data files.
+    if (!d.accounts) { d.accounts = []; changed = true; }
+    if (!d.accountingPeriods) { d.accountingPeriods = []; changed = true; }
+    if (!d.payments) { d.payments = []; changed = true; }
+    if (!d.syncOperations) { d.syncOperations = []; changed = true; }
+    if (typeof d.syncCursor !== 'number') { d.syncCursor = 0; changed = true; }
+
+    // Give pre-existing patients a sync sequence so offline devices can pull them.
+    for (const p of d.patients) {
+      if (typeof p.syncSeq !== 'number') {
+        p.syncSeq = ++d.syncCursor;
+        changed = true;
+      }
+    }
+
+    // Every tenant gets the default chart of accounts; existing accounts are never overwritten.
+    for (const tenant of d.tenants) {
+      for (const def of DEFAULT_CHART) {
+        if (!d.accounts.some(a => a.tenantId === tenant.id && a.code === def.code)) {
+          d.accounts.push({
+            id: `acc-${tenant.id}-${def.code}`,
+            tenantId: tenant.id,
+            code: def.code,
+            name: def.name,
+            type: def.type,
+            isActive: true,
+            createdAt: new Date().toISOString(),
+          });
+          changed = true;
+        }
+      }
+    }
+
+    for (const tenant of d.tenants) {
+      const roleId = tenant.id === 'tenant-001' ? 'role-admin' : `role-admin-${tenant.id}`;
+      let adminRole = d.roles.find(r => r.id === roleId && r.tenantId === tenant.id);
+      if (!adminRole) {
+        adminRole = {
+          id: roleId,
+          tenantId: tenant.id,
+          name: 'مدير النظام الكامل (Enterprise Admin)',
+          permissions: [...ALL_PERMISSIONS],
+        };
+        d.roles.push(adminRole);
+        changed = true;
+      }
+      const missing = ALL_PERMISSIONS.filter(p => !adminRole!.permissions.includes(p));
+      if (missing.length > 0) {
+        adminRole.permissions.push(...missing);
+        changed = true;
+      }
+    }
+
+    for (const user of d.users) {
+      const role = d.roles.find(r => r.id === user.roleId && r.tenantId === user.tenantId);
+      if (!role) {
+        // Legacy cross-tenant reference (e.g. tenant-002 admin pointing at tenant-001's role).
+        const fallback = d.roles.find(r => r.tenantId === user.tenantId && r.name.includes('Enterprise Admin'));
+        if (fallback && user.roleId === 'role-admin' && user.tenantId !== 'tenant-001') {
+          user.roleId = fallback.id;
+          user.roleName = fallback.name;
+          changed = true;
+        }
+        continue;
+      }
+      if (user.roleName !== role.name) {
+        user.roleName = role.name;
+        changed = true;
+      }
+    }
+
+    if (changed) this.save();
   }
 
   public save(): void {
@@ -672,6 +822,11 @@ export class EnterpriseDatabase {
       products: initialProducts,
       invoices: initialInvoices,
       journalEntries: initialJournals,
+      accounts: [],
+      accountingPeriods: [],
+      payments: [],
+      syncOperations: [],
+      syncCursor: 0,
       auditLogs: initialAudits,
       licenses: initialLicenses,
       supportTickets: initialTickets,

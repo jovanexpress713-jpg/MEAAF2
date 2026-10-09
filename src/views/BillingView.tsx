@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Api } from '../services/api';
+import { InvoiceActionDialog, InvoiceAction } from './InvoiceActionDialog';
 import {
   Receipt,
   Search,
@@ -24,6 +25,7 @@ export const BillingView: React.FC = () => {
   const [invoices, setInvoices] = useState<any[]>([]);
   const [activeInvoiceModal, setActiveInvoiceModal] = useState<any | null>(null);
   const [loading, setLoading] = useState(false);
+  const [action, setAction] = useState<{ kind: InvoiceAction; invoice: any } | null>(null);
 
   const fetchInitial = async () => {
     try {
@@ -274,6 +276,7 @@ export const BillingView: React.FC = () => {
                 <th className="px-5 py-3">المجموع الفرعي</th>
                 <th className="px-5 py-3">الضريبة</th>
                 <th className="px-5 py-3">الإجمالي</th>
+                <th className="px-5 py-3">المتبقي</th>
                 <th className="px-5 py-3">الحالة</th>
                 <th className="px-5 py-3 text-center">إجراءات</th>
               </tr>
@@ -291,19 +294,49 @@ export const BillingView: React.FC = () => {
                   <td className="px-5 py-3 font-mono font-bold text-slate-900">
                     {(inv.totalCents / 100).toFixed(2)} ر.س
                   </td>
+                  <td className="px-5 py-3 font-mono font-bold text-amber-700">
+                    {inv.status === 'Cancelled' ? '—' : `${(inv.balanceCents / 100).toFixed(2)} ر.س`}
+                  </td>
                   <td className="px-5 py-3">
-                    <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-semibold text-[10px]">
-                      مُرحّلة (Posted)
-                    </span>
+                    {inv.status === 'Cancelled' ? (
+                      <span className="bg-slate-100 text-slate-600 border border-slate-300 px-2 py-0.5 rounded-full font-semibold text-[10px]">
+                        ملغاة
+                      </span>
+                    ) : inv.balanceCents === 0 ? (
+                      <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-semibold text-[10px]">
+                        مسددة بالكامل
+                      </span>
+                    ) : (
+                      <span className="bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full font-semibold text-[10px]">
+                        {inv.netPaidCents > 0 ? 'مسددة جزئياً' : 'مُرحّلة (Posted)'}
+                      </span>
+                    )}
                   </td>
                   <td className="px-5 py-3 text-center">
-                    <button
-                      onClick={() => setActiveInvoiceModal(inv)}
-                      className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[11px] font-semibold transition-colors inline-flex items-center gap-1 cursor-pointer"
-                    >
-                      <Printer className="w-3 h-3 text-slate-600" />
-                      معاينة / طباعة
-                    </button>
+                    <div className="flex flex-wrap items-center justify-center gap-1.5">
+                      <button
+                        onClick={() => setActiveInvoiceModal(inv)}
+                        className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[11px] font-semibold transition-colors inline-flex items-center gap-1 cursor-pointer"
+                      >
+                        <Printer className="w-3 h-3 text-slate-600" />
+                        معاينة / طباعة
+                      </button>
+                      {inv.status === 'Posted' && inv.balanceCents > 0 && (
+                        <button onClick={() => setAction({ kind: 'pay', invoice: inv })} className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded text-[11px] font-semibold cursor-pointer">
+                          تحصيل
+                        </button>
+                      )}
+                      {inv.status === 'Posted' && inv.netPaidCents > 0 && (
+                        <button onClick={() => setAction({ kind: 'refund', invoice: inv })} className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded text-[11px] font-semibold cursor-pointer">
+                          استرداد
+                        </button>
+                      )}
+                      {inv.status === 'Posted' && inv.netPaidCents === 0 && (
+                        <button onClick={() => setAction({ kind: 'cancel', invoice: inv })} className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded text-[11px] font-semibold cursor-pointer">
+                          إلغاء
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -311,6 +344,19 @@ export const BillingView: React.FC = () => {
           </table>
         </div>
       </div>
+
+      {action && (
+        <InvoiceActionDialog
+          kind={action.kind}
+          invoice={action.invoice}
+          onClose={() => setAction(null)}
+          onDone={() => {
+            setAction(null);
+            setStatusMessage('تم تنفيذ العملية وترحيل القيد المرافق كمسودة بانتظار الاعتماد.');
+            fetchInitial();
+          }}
+        />
+      )}
 
       {/* Invoice Printable View Modal */}
       {activeInvoiceModal && (

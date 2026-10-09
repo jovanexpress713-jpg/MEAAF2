@@ -13,6 +13,7 @@ import {
   LifeBuoy,
   HardDriveDownload,
   ScrollText,
+  UserCog,
 } from 'lucide-react';
 
 export type NavTab =
@@ -28,7 +29,8 @@ export type NavTab =
   | 'control'
   | 'support'
   | 'backup'
-  | 'audit';
+  | 'audit'
+  | 'users';
 
 interface SidebarProps {
   currentTab: NavTab;
@@ -46,6 +48,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onSelectTab }) => 
   ];
 
   const enterpriseItems = [
+    { id: 'users' as NavTab, label: 'المستخدمون والأدوار', icon: UserCog },
     { id: 'devices' as NavTab, label: 'محطات العمل والطباعة', icon: Monitor },
     { id: 'migration' as NavTab, label: 'ترحيل البيانات والمطابقة', icon: DatabaseZap },
     { id: 'health' as NavTab, label: 'مركز صحة النظام', icon: HeartPulse },

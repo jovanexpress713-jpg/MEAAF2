@@ -24,8 +24,8 @@
 ## Business readiness
 
 - [ ] Patient field mapping, duplicate detection, validation, approval, atomic import, and audit are integration-tested against a sanitized SQL Server source copy.
-- [ ] Mapping, reconciliation, and final import for invoices, inventory, accounting, and any other supported entities are implemented and tested before claiming general migration support.
-- [ ] Offline queue replication, transport authentication, idempotency, and conflict recovery are implemented and tested under network loss.
+- [ ] Mapping, reconciliation, and final import for invoices, inventory, accounting, and any other supported entities are implemented and tested before claiming general migration support. *Phase 4 (web):* file import (CSV/JSON, max 10,000 rows, staged validation, atomic commit, idempotent re-runs) is implemented and API-tested for patients, chart of accounts, products/opening stock, historical invoices (posted with VAT split, cancellable through billing), and approved opening journals. Not yet reconciled against a SQL Server source copy; SQL connector flow removed.
+- [ ] Offline queue replication, transport authentication, idempotency, and conflict recovery are implemented and tested under network loss. *Phase 4 (web):* `POST /sync/push` (idempotent per `opId`, duplicate medical numbers reported as conflicts, server record kept) and `GET /sync/pull` (cursor-based) are implemented and API-tested; the browser outbox queues **patient creation only**. Invoices, inventory, and journals are not offline-capable. Pull is not yet used by the browser client, and transport authentication relies on the session token; device-level credentials are not implemented. Browser offline flow not yet verified with an automated UI test.
 - [ ] Licensing issuance, activation, expiry enforcement, and key rotation are integrated and tested.
 - [ ] Chart of accounts, payments, refunds, invoice voiding, and accounting period close are implemented and reviewed by accounting staff.
 - [ ] User/role management and secure password-reset flows are available; self-service password change is tested.
@@ -33,3 +33,5 @@
 - [ ] End-to-end UI automation, installer, code signing, and operational monitoring are complete.
 
 **Release status until every applicable check passes: NOT READY FOR PRODUCTION.**
+
+_Last updated: Phase 4 (migration and sync) of the web completion plan, 2026-10-08._

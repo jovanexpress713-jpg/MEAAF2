@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import { db, UserRecord, AuditRecord } from './db';
 
 // In-memory active session tokens mapped to user ID and tenant ID
@@ -10,6 +11,7 @@ interface SessionData {
   displayName: string;
   roleName: string;
   permissions: string[];
+  mustChangePassword: boolean;
   expiresAt: number;
 }
 
@@ -19,8 +21,19 @@ export interface AuthenticatedRequest extends Request {
   user?: SessionData;
 }
 
-export function createSession(user: UserRecord, permissions: string[]): string {
-  const token = 'mff_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
+export const DEFAULT_SEED_PASSWORD = 'Admin@123456';
+
+// True when the account still uses the publicly known seed password or was flagged by an admin.
+export function requiresPasswordChange(user: UserRecord): boolean {
+  if (user.mustChangePassword) return true;
+  return bcrypt.compareSync(DEFAULT_SEED_PASSWORD, user.passwordHash);
+}
+
+// Paths allowed while a password change is still required.
+const PASSWORD_CHANGE_EXEMPT = ['/auth/me', '/auth/logout', '/auth/change-password'];
+
+export function createSession(user: UserRecord, permissions: string[], mustChangePassword = false): string {
+  const token = 'mff_' + crypto.randomBytes(32).toString('base64url');
   // Session valid for 24 hours
   const expiresAt = Date.now() + 24 * 60 * 60 * 1000;
   
@@ -31,10 +44,23 @@ export function createSession(user: UserRecord, permissions: string[]): string {
     displayName: user.displayName,
     roleName: user.roleName,
     permissions,
+    mustChangePassword,
     expiresAt,
   });
 
   return token;
+}
+
+export function clearMustChangeForUser(userId: string): void {
+  for (const session of sessions.values()) {
+    if (session.userId === userId) session.mustChangePassword = false;
+  }
+}
+
+export function revokeSessionsForUser(userId: string): void {
+  for (const [token, session] of sessions.entries()) {
+    if (session.userId === userId) sessions.delete(token);
+  }
 }
 
 export function revokeSession(token: string): void {
@@ -65,6 +91,12 @@ export function authenticate(req: AuthenticatedRequest, res: Response, next: Nex
     return;
   }
 
+  const path = req.path;
+  if (session.mustChangePassword && !PASSWORD_CHANGE_EXEMPT.includes(path)) {
+    res.status(403).json({ error: 'يجب تغيير كلمة المرور قبل متابعة استخدام النظام.', code: 'PASSWORD_CHANGE_REQUIRED' });
+    return;
+  }
+
   req.user = session;
   next();
 }
@@ -77,7 +109,8 @@ export function requirePermission(resource: string, action: string) {
     }
 
     const permissionKey = `${resource}:${action}`;
-    const hasPerm = req.user.permissions.includes(permissionKey) || req.user.roleName.includes('Enterprise Admin');
+    // Permissions come only from the role's explicit list; the role's display name grants nothing.
+    const hasPerm = req.user.permissions.includes(permissionKey);
 
     if (!hasPerm) {
       // Audit security rejection

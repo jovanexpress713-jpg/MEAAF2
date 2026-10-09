@@ -5,11 +5,14 @@ import { Lock, X, AlertCircle, CheckCircle2 } from 'lucide-react';
 interface ChangePasswordModalProps {
   isOpen: boolean;
   onClose: () => void;
+  /** When true the dialog cannot be dismissed until the password is changed. */
+  forced?: boolean;
 }
 
 export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
   isOpen,
   onClose,
+  forced = false,
 }) => {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -65,12 +68,14 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
             <Lock className="w-5 h-5 text-amber-400" />
             <h2 className="font-bold text-base">تغيير كلمة المرور</h2>
           </div>
+          {!forced && (
           <button
             onClick={onClose}
             className="text-slate-400 hover:text-white transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
+          )}
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
@@ -134,6 +139,7 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
           </div>
 
           <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+            {!forced && (
             <button
               type="button"
               onClick={onClose}
@@ -141,6 +147,7 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
             >
               إلغاء
             </button>
+            )}
             <button
               type="submit"
               disabled={success || loading}
