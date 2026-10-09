@@ -23,10 +23,28 @@ export interface AuthenticatedRequest extends Request {
 
 export const DEFAULT_SEED_PASSWORD = 'Admin@123456';
 
-// True when the account still uses the publicly known seed password or was flagged by an admin.
+// ⚠️  TEMPORARY DEV MODIFICATION — DO NOT USE IN PRODUCTION
+// 
+// Original behavior:
+//   - Returns true if admin flagged the user (mustChangePassword = true)
+//   - Returns true if the password is still the default seed password
+//
+// Modified behavior (current):
+//   - Only respects the admin flag (mustChangePassword)
+//   - Does NOT force change just because the default password is in use
+//
+// To restore production behavior, uncomment the original lines below:
+//
+//   export function requiresPasswordChange(user: UserRecord): boolean {
+//     if (user.mustChangePassword) return true;
+//     return bcrypt.compareSync(DEFAULT_SEED_PASSWORD, user.passwordHash);
+//   }
 export function requiresPasswordChange(user: UserRecord): boolean {
+  // ⚠️ DEV: Only respect explicit admin flag, skip default-password check
   if (user.mustChangePassword) return true;
-  return bcrypt.compareSync(DEFAULT_SEED_PASSWORD, user.passwordHash);
+  // Original line (disabled for dev):
+  // return bcrypt.compareSync(DEFAULT_SEED_PASSWORD, user.passwordHash);
+  return false; // ⚠️ DEV: Never force password change due to default password
 }
 
 // Paths allowed while a password change is still required.
