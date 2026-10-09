@@ -26,15 +26,102 @@ import {
   logAudit,
   requiresPasswordChange,
   clearMustChangeForUser,
+  ensureAdminUser,
+  getOpenSessionToken,
+  resetOpenSession,
   DEFAULT_SEED_PASSWORD,
 } from './auth';
+import { AUTH_MODE, isOpenAuth, APP_VERSION } from './config';
 
 export const apiRouter = Router();
 
 // ==========================================
 // 1. AUTHENTICATION & SECURITY
 // ==========================================
+
+// Public: tells the client whether it must show a login form at all.
+apiRouter.get('/auth/mode', (req, res: Response) => {
+  res.json({
+    mode: AUTH_MODE,
+    requiresPassword: !isOpenAuth(),
+    version: APP_VERSION,
+  });
+});
+
+/**
+ * Automatic sign-in for open mode: no username, no password.
+ * Creates the administrator account when the database does not have one and returns a
+ * ready-to-use session token with the full permission set.
+ */
+apiRouter.post('/auth/auto-login', (req, res: Response) => {
+  if (!isOpenAuth()) {
+    res.status(403).json({
+      error: 'الدخول التلقائي معطل: النظام يعمل بوضع كلمات المرور. استخدم شاشة تسجيل الدخول.',
+      code: 'AUTO_LOGIN_DISABLED',
+    });
+    return;
+  }
+
+  const { token, session, created } = getOpenSessionToken();
+  const raw = db.getRawData();
+  const tenant = raw.tenants.find(t => t.id === session.tenantId);
+
+  logAudit(
+    session.tenantId,
+    session.userId,
+    created ? 'AutoProvision' : 'AutoLogin',
+    'Core.Users',
+    session.userId,
+    created
+      ? 'تم إنشاء/إصلاح حساب مدير النظام تلقائياً ومنح جلسة مفتوحة بدون كلمة مرور.'
+      : 'دخول تلقائي بدون كلمة مرور (الوضع المفتوح).'
+  );
+
+  res.json({
+    token,
+    mode: AUTH_MODE,
+    mustChangePassword: false,
+    created,
+    user: {
+      id: session.userId,
+      userId: session.userId,
+      tenantId: session.tenantId,
+      username: session.username,
+      displayName: session.displayName,
+      roleName: session.roleName,
+      permissions: session.permissions,
+      mustChangePassword: false,
+    },
+    tenant,
+  });
+});
+
 apiRouter.post('/auth/login', (req, res: Response) => {
+  // In open mode the operator never types credentials; keep the endpoint working for
+  // tools/tests but make the response point at the automatic sign-in instead of failing
+  // with a confusing "wrong password" message.
+  if (isOpenAuth() && !process.env.MEAAF_ALLOW_PASSWORD_LOGIN) {
+    const { token, session } = getOpenSessionToken();
+    const raw = db.getRawData();
+    res.json({
+      token,
+      mode: AUTH_MODE,
+      mustChangePassword: false,
+      user: {
+        id: session.userId,
+        userId: session.userId,
+        tenantId: session.tenantId,
+        username: session.username,
+        displayName: session.displayName,
+        roleName: session.roleName,
+        permissions: session.permissions,
+      },
+      tenant: raw.tenants.find(t => t.id === session.tenantId),
+      notice: 'النظام يعمل بالدخول التلقائي المفتوح؛ تم تجاهل بيانات الدخول المرسلة.',
+    });
+    return;
+  }
+
   const { username, password } = req.body;
   if (!username || !password) {
     res.status(400).json({ error: 'اسم المستخدم وكلمة المرور مطلوبان.' });
@@ -512,6 +599,9 @@ apiRouter.post('/backup/reset', authenticate, requirePermission('Backup', 'Resto
     return;
   }
   db.seedDefaultData();
+  // Seeding replaces the user table, so the shared open-mode session must be rebuilt
+  // against the fresh administrator record instead of pointing at a deleted user.
+  if (isOpenAuth()) resetOpenSession();
   logAudit('tenant-001', req.user?.userId, 'FactoryReset', 'Core.System', undefined, 'إعادة ضبط المنظومة للبيانات التأسيسية المعتمدة');
   res.json({ success: true, message: 'تمت إعادة الضبط للبيانات التأسيسية.' });
 });

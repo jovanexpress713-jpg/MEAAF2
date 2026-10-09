@@ -28,6 +28,13 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     headers,
   });
 
+  // In open mode the server may hand back a refreshed session token (for example after a
+  // restart cleared the in-memory sessions). Adopt it so later calls keep working.
+  const rotated = response.headers.get('X-MEAAF-Session');
+  if (rotated && rotated !== token) {
+    setAuthToken(rotated);
+  }
+
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
@@ -35,6 +42,17 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   }
 
   return data as T;
+}
+
+export type AuthMode = 'open' | 'password';
+
+export interface AutoLoginResult {
+  token: string;
+  mode: AuthMode;
+  mustChangePassword: boolean;
+  created: boolean;
+  user: any;
+  tenant: any;
 }
 
 export const Api = {
@@ -98,6 +116,16 @@ export const Api = {
     request<{ token: string; user: any; tenant: any }>('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ username, password }),
+    }),
+
+  /** Public: does this installation ask for a password at all? */
+  getAuthMode: () =>
+    request<{ mode: AuthMode; requiresPassword: boolean; version: string }>('/auth/mode'),
+
+  /** Open mode: sign in automatically as the system administrator, no credentials. */
+  autoLogin: () =>
+    request<AutoLoginResult>('/auth/auto-login', {
+      method: 'POST',
     }),
 
   getMe: () => request<{ user: any; tenant: any }>('/auth/me'),

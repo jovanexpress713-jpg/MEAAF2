@@ -1,0 +1,6 @@
+{
+  "authMode": "open",
+  "appVersion": "1.0.0",
+  "defaultTenantId": "tenant-001",
+  "openAdminUsername": "admin"
+}

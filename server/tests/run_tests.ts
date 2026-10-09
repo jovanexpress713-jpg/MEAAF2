@@ -1,6 +1,14 @@
 import bcrypt from 'bcryptjs';
 import { db } from '../db';
-import { createSession, getSession } from '../auth';
+import {
+  createSession,
+  getSession,
+  requiresPasswordChange,
+  ensureAdminUser,
+  getOpenSessionToken,
+} from '../auth';
+import { ALL_PERMISSIONS } from '../permissions';
+import { AUTH_MODE, isOpenAuth } from '../config';
 
 interface TestResult {
   name: string;
@@ -159,6 +167,69 @@ async function runTestSuite() {
     'Audit',
     auditLogs.length > 0,
     `Audit trail contains ${auditLogs.length} verified immutable event logs.`
+  );
+
+  // Test 7: Automatic sign-in / password lockout regression
+  console.log('\n--- 7. Automatic Sign-In & Lockout Regression Tests ---');
+
+  recordTest(
+    'Authentication Mode Resolution',
+    'Auth',
+    AUTH_MODE === 'open' || AUTH_MODE === 'password',
+    `Resolved authentication mode from environment/config: "${AUTH_MODE}" (open = ${isOpenAuth()}).`
+  );
+
+  const seedAdmin = raw.users.find(u => u.username === 'admin');
+
+  recordTest(
+    'Seed Password Never Forces a Change in Open Mode',
+    'Auth',
+    !isOpenAuth() || (seedAdmin ? requiresPasswordChange(seedAdmin) === false : true),
+    isOpenAuth()
+      ? 'The administrator still carrying the public seed hash is no longer blocked by a forced password change (the old 403 PASSWORD_CHANGE_REQUIRED trap).'
+      : 'Password mode is active; the forced-change policy is intentionally preserved.'
+  );
+
+  const { user: autoAdmin, role: autoRole, created } = ensureAdminUser();
+
+  recordTest(
+    'Administrator Auto-Provisioning',
+    'Auth',
+    !!autoAdmin && autoAdmin.isActive && !autoAdmin.isDeleted && autoAdmin.mustChangePassword === false,
+    `Administrator "${autoAdmin?.username}" is active, not deleted and has no pending password change (${created ? 'created/repaired now' : 'already healthy'}).`
+  );
+
+  recordTest(
+    'Administrator Role Carries the Full Permission Catalog',
+    'Auth',
+    ALL_PERMISSIONS.every(p => autoRole.permissions.includes(p)),
+    `Role "${autoRole.name}" grants ${autoRole.permissions.length}/${ALL_PERMISSIONS.length} catalog permissions, so no module is blocked after automatic sign-in.`
+  );
+
+  const first = getOpenSessionToken();
+  const second = getOpenSessionToken();
+  const openSession = getSession(first.token);
+
+  recordTest(
+    'Passwordless Session Is Valid and Stable',
+    'Auth',
+    !!openSession &&
+      openSession.mustChangePassword === false &&
+      openSession.permissions.length === ALL_PERMISSIONS.length &&
+      first.token === second.token,
+    `Open session ${first.token.slice(0, 12)}... carries ${openSession?.permissions.length ?? 0} permissions, mustChangePassword=false, and is reused instead of leaking a new session per request.`
+  );
+
+  // Repair path: a stale "must change password" flag (left over from the password era)
+  // must be cleared by the auto-provisioner, otherwise every screen answers 403 again.
+  autoAdmin.mustChangePassword = true;
+  const repaired = ensureAdminUser();
+
+  recordTest(
+    'Stale Password-Change Flag Is Repaired Automatically',
+    'Auth',
+    repaired.user.mustChangePassword === false && getSession(first.token)?.mustChangePassword === false,
+    'A flagged administrator is healed on the next automatic sign-in instead of being locked behind the modal.'
   );
 
   // Summary
