@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import http from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { apiRouter } from './server/api';
@@ -25,11 +26,15 @@ async function startServer() {
 
   const isProduction = process.env.NODE_ENV === 'production';
 
+  // One HTTP server for everything (pages, /api, and in development the Vite HMR websocket),
+  // so only port 3000 is opened.
+  const httpServer = http.createServer(app);
+
   if (!isProduction) {
-    // Mount Vite middlewares in development
+    // Mount Vite middlewares in development; HMR attaches to httpServer instead of a second port.
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
-      server: { middlewareMode: true, host: HOST, port: PORT },
+      server: { middlewareMode: true, hmr: { server: httpServer } },
       appType: 'spa',
     });
     app.use(vite.middlewares);
@@ -41,7 +46,7 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, HOST, () => {
+  httpServer.listen(PORT, HOST, () => {
     console.log(`[MEAAF Enterprise] Server running on http://${HOST}:${PORT}`);
   });
 }
